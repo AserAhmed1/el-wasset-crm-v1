@@ -8,6 +8,7 @@ from app.models.log import Log
 from app.models.audit_log import AuditLog
 from app.services.hermes_service import hermes_service
 from app.services.discovery_service import discovery_service
+from app.services.gemini_service import gemini_service
 from sqlalchemy import select
 
 router = APIRouter(prefix="/api/dev", tags=["dev"])
@@ -118,3 +119,19 @@ async def discovery_analyze(
 ):
     report = await discovery_service.generate_weekly_report(db, current_user.brokerage_id)
     return {"status": "report_generated", "report": report}
+
+
+class CoderRequest(BaseModel):
+    question: str
+
+
+@router.post("/coder")
+async def coder_endpoint(
+    body: CoderRequest,
+    current_user: User = Depends(get_current_user),
+):
+    if not body.question.strip():
+        raise HTTPException(status_code=400, detail="Question is required")
+    prompt = f"You are Coder, an expert Python/FastAPI/JavaScript developer helping build the EL-Wasset CRM app. Answer this technical question concisely in English:\n\n{body.question}"
+    response = await gemini_service.chat(prompt)
+    return {"response": response}

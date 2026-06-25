@@ -7,6 +7,7 @@ from app.models.chat_message import ChatMessage
 from app.models.deal import Deal
 from app.models.task import Task
 from app.config import settings
+from app.services.gemini_service import gemini_service
 
 logger = logging.getLogger("discovery")
 
@@ -59,6 +60,21 @@ class DiscoveryService:
             gaps.append("Commission calculations are common - add quick commission calculator to dashboard")
         if keywords.get("remind", 0) + keywords.get("call", 0) + keywords.get("اتصال", 0) + keywords.get("تذكير", 0) > 5:
             gaps.append("Reminder/call requests frequent - consider auto-reminder from chat")
+
+        # Gemini deep analysis for richer insights
+        ai_insights = []
+        if messages:
+            sample = [m.content[:200] for m in messages[:5] if m.content]
+            if sample:
+                prompt = (
+                    f"Analyze these real estate broker chat messages and suggest 2-3 feature improvements "
+                    f"for the CRM app. Messages:\n{chr(10).join(sample)}\n\n"
+                    f"Reply with bullet points only."
+                )
+                ai_result = await gemini_service.chat(prompt)
+                if ai_result and not ai_result.startswith("⚠️"):
+                    ai_insights = [line.strip("- ") for line in ai_result.split("\n") if line.strip() and not line.startswith("```")]
+                    gaps.extend(ai_insights[:3])
 
         return {
             "status": "success",

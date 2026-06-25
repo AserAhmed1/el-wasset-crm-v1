@@ -24,17 +24,29 @@
 <div class="dev-grid stagger">
   <div class="dev-card animate-in">
     <div class="dev-icon" style="background:rgba(108,92,231,0.15);color:var(--primary2)">🔍</div>
-    <div class="dev-badge">Hermes • Active</div>
+    <div class="dev-badge">Hermes • AI Powered</div>
     <h3>Error Monitor</h3>
-    <p>Monitors errors, sends alerts to gh221186@gmail.com</p>
+    <p>Monitors errors + AI fix suggestions via Gemini</p>
     <div id="hermesContent"><span class="loading-spinner"></span></div>
   </div>
 
   <div class="dev-card">
+    <div class="dev-icon" style="background:rgba(253,203,110,0.15);color:var(--warning)">💻</div>
+    <div class="dev-badge">Coder • AI Powered</div>
+    <h3>Code Assistant</h3>
+    <p>Ask coding questions — powered by Gemini</p>
+    <div style="display:flex;gap:8px;margin-bottom:8px">
+      <input class="input" id="coderInput" placeholder="Ask a coding question..." style="font-size:13px;padding:8px 12px">
+      <button class="btn btn-primary btn-sm" onclick="askCoder()" style="flex-shrink:0">Ask</button>
+    </div>
+    <div id="coderContent" style="font-size:12px;color:var(--text2)"></div>
+  </div>
+
+  <div class="dev-card">
     <div class="dev-icon" style="background:rgba(0,206,201,0.15);color:var(--accent)">🤖</div>
-    <div class="dev-badge">Discovery • Active</div>
+    <div class="dev-badge">Discovery • AI Powered</div>
     <h3>Pattern Analysis</h3>
-    <p>Chat pattern analysis & feature gap detection</p>
+    <p>Chat pattern analysis + AI feature gap detection</p>
     <div id="discoveryContent"><span class="loading-spinner"></span></div>
     <button class="btn btn-sm btn-ghost" onclick="runDiscovery()" style="margin-top:8px">🔄 Run Analysis</button>
   </div>
@@ -82,6 +94,23 @@
 
 {% block scripts %}
 <script>
+async function askCoder() {
+  const q = document.getElementById('coderInput').value.trim();
+  if (!q) return;
+  const el = document.getElementById('coderContent');
+  el.innerHTML = '<span class="loading-spinner"></span> Thinking...';
+  try {
+    const data = await api('/api/dev/coder', { method: 'POST', body: JSON.stringify({ question: q }) });
+    if (data && data.response) {
+      el.innerHTML = '<div style="background:var(--bg2);padding:12px;border-radius:var(--radius3);font-size:13px;line-height:1.6;white-space:pre-wrap">' + escapeHtml(data.response) + '</div>';
+    } else {
+      el.innerHTML = '<p style="color:var(--text3)">No response</p>';
+    }
+  } catch(e) {
+    el.innerHTML = '<p style="color:var(--danger)">Error</p>';
+  }
+}
+
 async function loadHermes() {
   try {
     const data = await api('/api/dev/hermes');

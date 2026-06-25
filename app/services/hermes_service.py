@@ -5,6 +5,7 @@ from sqlalchemy import select, func
 from app.models.log import Log
 from app.models.audit_log import AuditLog
 from app.config import settings
+from app.services.gemini_service import gemini_service
 
 logger = logging.getLogger("hermes")
 
@@ -39,6 +40,12 @@ class HermesService:
         if level in ("error", "critical"):
             logger.error(f"Hermes captured {level}: {message}")
             await self._notify_admin(message, level)
+            # Auto-suggest fix via Gemini
+            fix_suggestion = await gemini_service.chat(
+                f"An error occurred in the EL-Wasset CRM app:\n{message}\n\nSuggest a fix in 2-3 sentences."
+            )
+            if fix_suggestion and not fix_suggestion.startswith("⚠️"):
+                await self.suggest_fix(message, fix_suggestion, "")
 
         return log_entry if db else None
 
