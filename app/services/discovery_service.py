@@ -61,7 +61,7 @@ class DiscoveryService:
         if keywords.get("remind", 0) + keywords.get("call", 0) + keywords.get("اتصال", 0) + keywords.get("تذكير", 0) > 5:
             gaps.append("Reminder/call requests frequent - consider auto-reminder from chat")
 
-        # Gemini deep analysis for richer insights
+        # DeepSeek deep analysis for richer insights
         ai_insights = []
         if messages:
             sample = [m.content[:200] for m in messages[:5] if m.content]

@@ -60,6 +60,20 @@
     <div id="geminiTestResult" style="margin-top:8px;font-size:12px"></div>
   </div>
 
+  <div class="card">
+    <h3 style="margin-bottom:4px;font-size:16px;color:var(--accent)">🧠 DeepSeek AI (for Ninjas)</h3>
+    <p style="color:var(--text2);font-size:13px;margin-bottom:12px">API key for Hermes, Coder & Discovery — get one free at platform.deepseek.com/api_keys</p>
+    <div class="form-group">
+      <input class="input" id="deepseekKey" placeholder="sk-..." style="font-family:monospace;font-size:13px">
+    </div>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-primary btn-sm" onclick="saveDeepSeekKey()">Save</button>
+      <button class="btn btn-ghost btn-sm" onclick="testDeepSeek()">Test</button>
+    </div>
+    <span id="deepseekStatus" style="font-size:12px;margin-left:8px;color:var(--text3)"></span>
+    <div id="deepseekTestResult" style="margin-top:8px;font-size:12px"></div>
+  </div>
+
   <div class="card" id="devUnlockCard" style="border-color:rgba(255,107,107,0.2);display:none">
     <h3 style="margin-bottom:4px;font-size:16px;color:var(--danger)">🔐 Dev Mode</h3>
     <p style="color:var(--text2);font-size:13px;margin-bottom:12px">Enter name + unique code to unlock developer tools</p>

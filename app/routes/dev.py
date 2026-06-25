@@ -132,6 +132,6 @@ async def coder_endpoint(
 ):
     if not body.question.strip():
         raise HTTPException(status_code=400, detail="Question is required")
-    prompt = f"You are Coder, an expert Python/FastAPI/JavaScript developer helping build the EL-Wasset CRM app. Answer this technical question concisely in English:\n\n{body.question}"
+    prompt = f"Answer this technical question concisely in English. The app is EL-Wasset CRM built with Python FastAPI, SQLAlchemy, Jinja2, JavaScript:\n\n{body.question}"
     response = await gemini_service.chat(prompt)
     return {"response": response}
