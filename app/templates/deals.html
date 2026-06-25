@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 data-i18n="deals">Deals</h1>
+    <p class="subtitle" data-i18n="drag_hint">Drag to change stage</p>
+  </div>
+  <button class="btn btn-primary" onclick="showAddDeal()">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+    <span data-i18n="add_deal">Add Deal</span>
+  </button>
+</div>
+
+<div class="filter-bar">
+  <input class="input" style="max-width:320px" type="text" id="dealSearch" data-i18n-placeholder="search_deals" placeholder="Search by name..." oninput="renderDeals(this.value)">
+</div>
+
+<div id="dealsKanban" style="min-height:300px">
+  <div class="loading-spinner" style="margin:40px auto;display:block"></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const DEAL_STAGES = ['lead', 'qualified', 'site_visit', 'reservation', 'contract', 'handover', 'closed', 'lost', 'dead'];
+
+async function renderDeals(search='') {
+  const url = search ? `/api/deals/pipeline?search=${encodeURIComponent(search)}` : '/api/deals/pipeline';
+  const data = await api(url);
+  if (!data) return;
+
+  const container = document.getElementById('dealsKanban');
+
+  if (!data.pipeline || Object.keys(data.pipeline).length === 0) {
+    container.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-icon">💼</div>
+        <p data-i18n="no_deals">No deals yet. Add your first deal!</p>
+        <button class="btn btn-primary" onclick="showAddDeal()" data-i18n="add_deal">Add Deal</button>
+      </div>
+    `;
+    window.i18n.apply();
+    return;
+  }
+
+  container.innerHTML = `<div class="kanban">${DEAL_STAGES.map(stage => {
+    const deals = data.pipeline[stage] || [];
+    return `
+      <div class="kanban-col" ondrop="onDrop(event, '${stage}')" ondragover="onDragOver(event)">
+        <div class="kanban-col-header">
+          <h3>${window.i18n.t(stage)}</h3>
+          <span class="count">${deals.length}</span>
+        </div>
+        ${deals.map(d => `
+          <div class="kanban-card" draggable="true" ondragstart="onDragStart(event, ${d.id})" onclick="showEditDeal(${d.id})">
+            <h4>${escapeHtml(d.title || d.contact_name || '')}</h4>
+            <p>${d.price ? fmtMoney(d.price) + ' EGP' : ''} ${d.contact_name ? '· ' + escapeHtml(d.contact_name) : ''}</p>
+            ${d.commission ? `<p style="color:var(--success);font-size:12px">💰 ${fmtMoney(d.commission)} EGP</p>` : ''}
+          </div>
+        `).join('')}
+      </div>
+    `;
+  }).join('')}</div>`;
+
+  window.i18n.apply();
+}
+
+let dragDealId = null;
+function onDragStart(e, id) { dragDealId = id; e.dataTransfer.effectAllowed = 'move'; }
+function onDragOver(e) { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }
+async function onDrop(e, stage) {
+  e.preventDefault();
+  if (!dragDealId) return;
+  const resp = await fetch('/api/deals/' + dragDealId, {
+    method: 'PUT',
+    headers: { 'Authorization': 'Bearer ' + localStorage.getItem('access_token'), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ stage })
+  });
+  if (resp.ok) { showToast('Deal moved to ' + stage, 'success'); renderDeals(document.getElementById('dealSearch').value); }
+  else showToast('Error moving deal', 'error');
+  dragDealId = null;
+}
+
+function showAddDeal() {
+  openModal('Add Deal', `
+    <div class="form-group"><label data-i18n="name">Title</label><input class="input" id="dfTitle"></div>
+    <div class="form-group"><label data-i18n="contact">Contact ID</label><input class="input" type="number" id="dfContactId"></div>
+    <div class="form-group"><label data-i18n="property">Property ID</label><input class="input" type="number" id="dfPropertyId"></div>
+    <div class="form-group"><label data-i18n="stage">Stage</label><select class="input" id="dfStage">${DEAL_STAGES.map(s => `<option value="${s}" data-i18n="${s}">${s}</option>`).join('')}</select></div>
+    <div class="form-group"><label data-i18n="price">Price</label><input class="input" type="number" id="dfPrice"></div>
+    <div class="form-group"><label data-i18n="commission_amount">Commission Amount</label><input class="input" type="number" id="dfCommission"></div>
+    <div class="form-group"><label data-i18n="commission_percentage">Commission %</label><input class="input" type="number" step="0.1" id="dfCommissionPct"></div>
+    <div class="form-group"><label data-i18n="notes">Notes</label><textarea class="input" id="dfNotes"></textarea></div>
+  `, `
+    <button class="btn btn-ghost" onclick="closeModal()" data-i18n="cancel">Cancel</button>
+    <button class="btn btn-primary" onclick="saveDeal()" data-i18n="save">Save</button>
+  `);
+  window.i18n.apply();
+}
+
+async function showEditDeal(id) {
+  const data = await api('/api/deals/' + id);
+  if (!data) return;
+  openModal('Edit Deal', `
+    <div class="form-group"><label data-i18n="name">Title</label><input class="input" id="dfTitle" value="${escapeHtml(data.title || '')}"></div>
+    <div class="form-group"><label data-i18n="contact">Contact ID</label><input class="input" type="number" id="dfContactId" value="${data.contact_id || ''}"></div>
+    <div class="form-group"><label data-i18n="property">Property ID</label><input class="input" type="number" id="dfPropertyId" value="${data.property_id || ''}"></div>
+    <div class="form-group"><label data-i18n="stage">Stage</label><select class="input" id="dfStage">${DEAL_STAGES.map(s => `<option value="${s}" ${data.stage===s?'selected':''} data-i18n="${s}">${s}</option>`).join('')}</select></div>
+    <div class="form-group"><label data-i18n="price">Price</label><input class="input" type="number" id="dfPrice" value="${data.price || ''}"></div>
+    <div class="form-group"><label data-i18n="commission_amount">Commission Amount</label><input class="input" type="number" id="dfCommission" value="${data.commission || ''}"></div>
+    <div class="form-group"><label data-i18n="commission_percentage">Commission %</label><input class="input" type="number" step="0.1" id="dfCommissionPct" value="${data.commission_percentage || ''}"></div>
+    <div class="form-group"><label data-i18n="notes">Notes</label><textarea class="input" id="dfNotes">${escapeHtml(data.notes || '')}</textarea></div>
+  `, `
+    <button class="btn btn-ghost" onclick="closeModal()" data-i18n="cancel">Cancel</button>
+    <button class="btn btn-primary" onclick="saveDeal(${id})" data-i18n="save">Save</button>
+    <button class="btn btn-danger" onclick="deleteDeal(${id})" data-i18n="delete">Delete</button>
+  `);
+  window.i18n.apply();
+}
+
+async function saveDeal(id) {
+  const body = {
+    title: document.getElementById('dfTitle').value.trim(),
+    contact_id: parseInt(document.getElementById('dfContactId').value) || null,
+    property_id: parseInt(document.getElementById('dfPropertyId').value) || null,
+    stage: document.getElementById('dfStage').value,
+    price: parseFloat(document.getElementById('dfPrice').value) || null,
+    commission: parseFloat(document.getElementById('dfCommission').value) || null,
+    commission_percentage: parseFloat(document.getElementById('dfCommissionPct').value) || null,
+    notes: document.getElementById('dfNotes').value.trim()
+  };
+  if (!body.title) { showToast('Title is required', 'error'); return; }
+
+  const url = id ? '/api/deals/' + id : '/api/deals';
+  const method = id ? 'PUT' : 'POST';
+  const resp = await fetch(url, { method, headers: { 'Authorization': 'Bearer ' + localStorage.getItem('access_token'), 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  if (resp.ok) { closeModal(); showToast(id ? 'Deal updated!' : 'Deal added!', 'success'); renderDeals(document.getElementById('dealSearch').value); }
+  else { const err = await resp.json().catch(() => ({ detail: 'Error' })); showToast(err.detail || 'Error', 'error'); }
+}
+
+async function deleteDeal(id) {
+  if (!confirm('Are you sure?')) return;
+  const resp = await fetch('/api/deals/' + id, { method: 'DELETE', headers: { 'Authorization': 'Bearer ' + localStorage.getItem('access_token') } });
+  if (resp.ok) { closeModal(); showToast('Deal deleted', 'success'); renderDeals(document.getElementById('dealSearch').value); }
+  else showToast('Error deleting deal', 'error');
+}
+
+renderDeals();
+</script>
+{% endblock %}

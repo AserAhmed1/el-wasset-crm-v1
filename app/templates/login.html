@@ -1,0 +1,220 @@
+{% extends "base.html" %}
+{% block content %}
+<style>
+.auth-page{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
+.auth-card{width:100%;max-width:400px;padding:40px;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);animation:slideUp 0.5s ease}
+.auth-card .logo{text-align:center;margin-bottom:32px}
+.auth-card .logo svg{width:48px;height:48px;color:var(--primary)}
+.auth-card .logo h1{font-size:24px;margin-top:12px;background:linear-gradient(135deg,var(--primary),var(--accent));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.auth-card .logo p{color:var(--text2);font-size:14px;margin-top:4px;-webkit-text-fill-color:var(--text2)}
+.auth-card .form-group{margin-bottom:20px}
+.auth-card .btn{width:100%;padding:14px}
+.auth-card .auth-footer{text-align:center;margin-top:20px;font-size:14px;color:var(--text2)}
+.auth-card .auth-footer a{color:var(--primary2);font-weight:600}
+.otp-section{display:none}
+.otp-section.active{display:block;animation:slideUp 0.3s ease}
+.auth-error{background:rgba(255,107,107,0.1);border:1px solid rgba(255,107,107,0.3);border-radius:var(--radius3);padding:12px 16px;color:var(--danger);font-size:13px;margin-bottom:16px;display:none}
+</style>
+<div class="auth-page">
+  <div class="auth-card">
+    <div class="logo">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+      <h1 data-i18n="app_name">EL-Wasset</h1>
+      <p data-i18n="welcome">Welcome</p>
+    </div>
+
+    <div class="auth-error" id="authError"></div>
+
+    <!-- Login form -->
+    <div id="loginSection">
+      <div class="form-group">
+        <label data-i18n="email">Email</label>
+        <input class="input" type="email" id="loginEmail" data-i18n-placeholder="email" placeholder="Email" autocomplete="email">
+      </div>
+      <div class="form-group">
+        <label data-i18n="password">Password</label>
+        <input class="input" type="password" id="loginPassword" data-i18n-placeholder="password" placeholder="Password" autocomplete="current-password">
+      </div>
+      <button class="btn btn-primary" onclick="handleLogin()" id="loginBtn"><span data-i18n="login">Login</span></button>
+      <div style="text-align:center;margin-top:8px">
+        <a href="#" onclick="showOtpSection();return false" id="otpLink" style="font-size:13px;color:var(--accent)">🔑 <span data-i18n="have_otp">Have an OTP code? Verify</span></a>
+      </div>
+      <div class="auth-footer">
+        <span data-i18n="no_account">Don't have an account?</span> <a href="/register" data-i18n="register">Register</a>
+      </div>
+    </div>
+
+    <!-- OTP section -->
+    <div class="otp-section" id="otpSection">
+      <p style="color:var(--text2);font-size:14px;margin-bottom:16px" data-i18n="otp_sent">Enter the OTP sent to your email</p>
+      <div id="devOtpDisplay" style="display:none;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius3);padding:12px;text-align:center;margin-bottom:16px;font-size:13px;color:var(--text2)">
+        ⚡ Dev OTP: <span id="devOtpCode" style="font-size:24px;font-weight:700;color:var(--accent);letter-spacing:4px"></span>
+      </div>
+      <div class="form-group">
+        <label data-i18n="otp_code">OTP Code</label>
+        <input class="input" type="text" id="otpCode" placeholder="000000" maxlength="6" inputmode="numeric" pattern="[0-9]*" style="text-align:center;font-size:24px;letter-spacing:8px;font-weight:700">
+      </div>
+      <button class="btn btn-primary" onclick="handleOTP()" id="otpBtn"><span data-i18n="verify">Verify</span></button>
+      <div style="text-align:center;margin-top:12px">
+        <a href="#" onclick="showLoginSection();return false" id="backToLoginLink" style="display:none;font-size:13px" data-i18n="back_to_login">Back to Login</a>
+      </div>
+      <div class="form-group" id="otpEmailGroup" style="display:none">
+        <label data-i18n="email">Email</label>
+        <input class="input" type="email" id="otpEmail" readonly style="opacity:0.6">
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function handleLogin() {
+  const email = document.getElementById('loginEmail').value.trim();
+  const password = document.getElementById('loginPassword').value;
+  const btn = document.getElementById('loginBtn');
+  const err = document.getElementById('authError');
+
+  if (!email || !password) {
+    err.textContent = document.getElementById('authError').getAttribute('data-i18n-error') || 'Please fill in all fields';
+    err.style.display = 'block';
+    return;
+  }
+
+  err.style.display = 'none';
+  btn.disabled = true;
+  btn.innerHTML = '<span class="loading-spinner"></span>';
+
+  try {
+    const resp = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password })
+    });
+    const data = await resp.json();
+
+    if (!resp.ok) {
+      err.textContent = data.detail || 'Login failed';
+      err.style.display = 'block';
+      btn.disabled = false;
+      btn.innerHTML = '<span data-i18n="login">Login</span>';
+      window.i18n.apply();
+      return;
+    }
+
+    if (data.otp_required) {
+      document.getElementById('loginSection').style.display = 'none';
+      document.getElementById('otpSection').classList.add('active');
+      // Show dev OTP if available
+      const devOtp = localStorage.getItem('dev_otp_code');
+      if (devOtp) {
+        document.getElementById('devOtpCode').textContent = devOtp;
+        document.getElementById('devOtpDisplay').style.display = 'block';
+        document.getElementById('otpCode').value = devOtp;
+      }
+      btn.disabled = false;
+      btn.innerHTML = '<span data-i18n="login">Login</span>';
+      window.i18n.apply();
+      return;
+    }
+
+    localStorage.setItem('access_token', data.access_token);
+    localStorage.setItem('refresh_token', data.refresh_token);
+    window.location.href = '/dashboard?lang=' + (localStorage.getItem('lang') || 'ar');
+  } catch (e) {
+    err.textContent = 'Connection error';
+    err.style.display = 'block';
+    btn.disabled = false;
+    btn.innerHTML = '<span data-i18n="login">Login</span>';
+    window.i18n.apply();
+  }
+}
+
+async function handleOTP() {
+  const code = document.getElementById('otpCode').value.trim();
+  const btn = document.getElementById('otpBtn');
+  const err = document.getElementById('authError');
+
+  if (!code || code.length < 6) {
+    err.textContent = 'Please enter the 6-digit OTP code';
+    err.style.display = 'block';
+    return;
+  }
+
+  err.style.display = 'none';
+  btn.disabled = true;
+  btn.innerHTML = '<span class="loading-spinner"></span>';
+
+  try {
+    const email = document.getElementById('otpEmail').value.trim() || document.getElementById('loginEmail').value.trim();
+    const resp = await fetch('/api/auth/verify-otp', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, code })
+    });
+    const data = await resp.json();
+
+    if (!resp.ok) {
+      err.textContent = data.detail || 'Invalid OTP';
+      err.style.display = 'block';
+      btn.disabled = false;
+      btn.innerHTML = '<span data-i18n="verify">Verify</span>';
+      window.i18n.apply();
+      return;
+    }
+
+    localStorage.removeItem('dev_otp_code');
+    localStorage.removeItem('dev_otp_email');
+    localStorage.setItem('access_token', data.access_token);
+    localStorage.setItem('refresh_token', data.refresh_token);
+    window.location.href = '/dashboard?lang=' + (localStorage.getItem('lang') || 'ar');
+  } catch (e) {
+    err.textContent = 'Connection error';
+    err.style.display = 'block';
+    btn.disabled = false;
+    btn.innerHTML = '<span data-i18n="verify">Verify</span>';
+    window.i18n.apply();
+  }
+}
+
+function showOtpSection() {
+  document.getElementById('loginSection').style.display = 'none';
+  document.getElementById('otpSection').classList.add('active');
+  document.getElementById('backToLoginLink').style.display = 'inline';
+  // Auto-fill email from login form, or from stored dev email, or prompt
+  const email = document.getElementById('loginEmail').value.trim() || localStorage.getItem('dev_otp_email') || '';
+  document.getElementById('otpEmail').value = email;
+  document.getElementById('otpEmailGroup').style.display = 'block';
+  if (!email) document.getElementById('otpEmail').removeAttribute('readonly');
+  const devOtp = localStorage.getItem('dev_otp_code');
+  if (devOtp) {
+    document.getElementById('devOtpCode').textContent = devOtp;
+    document.getElementById('devOtpDisplay').style.display = 'block';
+    document.getElementById('otpCode').value = devOtp;
+  }
+}
+
+function showLoginSection() {
+  document.getElementById('otpSection').classList.remove('active');
+  document.getElementById('loginSection').style.display = 'block';
+}
+
+// Show OTP section automatically if dev OTP exists
+document.addEventListener('DOMContentLoaded', () => {
+  if (localStorage.getItem('dev_otp_code')) {
+    showOtpSection();
+  }
+});
+
+// Enter key support
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    if (document.getElementById('otpSection').classList.contains('active')) {
+      handleOTP();
+    } else {
+      handleLogin();
+    }
+  }
+});
+</script>
+{% endblock %}

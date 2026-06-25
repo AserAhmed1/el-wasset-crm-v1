@@ -1,0 +1,191 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 data-i18n="calendar">Calendar</h1>
+    <p class="subtitle" id="calendarMonthYear"></p>
+  </div>
+  <button class="btn btn-primary" onclick="showAddEvent()">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+    <span data-i18n="add_event">Add Event</span>
+  </button>
+</div>
+
+<div class="calendar-header">
+  <div class="calendar-nav">
+    <button class="btn btn-sm btn-ghost" onclick="changeMonth(-1)">←</button>
+    <h2 id="calTitle"></h2>
+    <button class="btn btn-sm btn-ghost" onclick="changeMonth(1)">→</button>
+  </div>
+  <button class="btn btn-sm btn-ghost" onclick="goToday()" data-i18n="today">Today</button>
+</div>
+
+<div id="calendarGrid" style="min-height:300px">
+  <div class="loading-spinner" style="margin:40px auto;display:block"></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let calDate = new Date();
+const MONTHS_EN = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+const DAYS_EN = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+const MONTHS_AR = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
+const DAYS_AR = ['أحد','إثنين','ثلاثاء','أربعاء','خميس','جمعة','سبت'];
+
+async function renderCalendar() {
+  const month = calDate.getMonth() + 1;
+  const year = calDate.getFullYear();
+  const data = await api(`/api/calendar?month=${month}&year=${year}`);
+  if (!data) return;
+
+  const isRTL = window.i18n.isRTL();
+  const months = isRTL ? MONTHS_AR : MONTHS_EN;
+  const days = isRTL ? DAYS_AR : DAYS_EN;
+  const monthsEn = MONTHS_EN;
+
+  document.getElementById('calTitle').textContent = `${months[calDate.getMonth()]} ${year}`;
+  document.getElementById('calendarMonthYear').textContent = `${monthsEn[calDate.getMonth()]} ${year}`;
+
+  const firstDay = new Date(year, month - 1, 1).getDay();
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const daysInPrev = new Date(year, month - 1, 0).getDate();
+  const today = new Date();
+  const todayStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+
+  const eventsMap = {};
+  if (data.events) {
+    data.events.forEach(e => {
+      const d = e.date.split('T')[0];
+      if (!eventsMap[d]) eventsMap[d] = [];
+      eventsMap[d].push(e);
+    });
+  }
+
+  // Build day headers
+  let html = '<div class="calendar-grid" style="direction:ltr">';
+  const dayOrder = isRTL ? [1,2,3,4,5,6,0] : [0,1,2,3,4,5,6];
+  dayOrder.forEach(d => { html += `<div class="calendar-day-header">${days[d]}</div>`; });
+
+  // Previous month days
+  const startOffset = isRTL ? (6 - firstDay + 1) % 7 : firstDay;
+  for (let i = startOffset - 1; i >= 0; i--) {
+    html += `<div class="calendar-day other-month"><span class="day-number">${daysInPrev - i}</span></div>`;
+  }
+
+  // Current month days
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dateStr = `${year}-${String(month).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const isToday = dateStr === todayStr;
+    const dayEvents = eventsMap[dateStr] || [];
+    html += `<div class="calendar-day ${isToday ? 'today' : ''}" onclick="showDateEvents('${dateStr}')">
+      <span class="day-number">${d}</span>
+      <div>${dayEvents.map(e => `<span class="event-dot ${e.type || 'meeting'}"></span>`).join('')}</div>
+    </div>`;
+  }
+
+  // Next month filler
+  const totalCells = startOffset + daysInMonth;
+  const remaining = (7 - (totalCells % 7)) % 7;
+  for (let i = 1; i <= remaining; i++) {
+    html += `<div class="calendar-day other-month"><span class="day-number">${i}</span></div>`;
+  }
+
+  html += '</div>';
+  document.getElementById('calendarGrid').innerHTML = html;
+}
+
+function changeMonth(delta) {
+  calDate.setMonth(calDate.getMonth() + delta);
+  renderCalendar();
+}
+
+function goToday() {
+  calDate = new Date();
+  renderCalendar();
+}
+
+async function showDateEvents(dateStr) {
+  const month = calDate.getMonth() + 1;
+  const year = calDate.getFullYear();
+  const data = await api(`/api/calendar?month=${month}&year=${year}`);
+  if (!data || !data.events) return;
+
+  const dayEvents = data.events.filter(e => e.date.split('T')[0] === dateStr);
+  if (!dayEvents.length) {
+    showAddEvent(dateStr);
+    return;
+  }
+
+  openModal(`Events - ${dateStr}`, dayEvents.map(e => `
+    <div style="display:flex;align-items:center;gap:12px;padding:12px;background:var(--bg);border-radius:var(--radius2);margin-bottom:8px">
+      <span class="event-dot ${e.type || 'meeting'}" style="width:10px;height:10px"></span>
+      <div style="flex:1">
+        <strong>${escapeHtml(e.title)}</strong>
+        ${e.time ? `<span style="font-size:12px;color:var(--text3)">${e.time}</span>` : ''}
+        ${e.description ? `<p style="font-size:12px;color:var(--text2)">${escapeHtml(e.description)}</p>` : ''}
+      </div>
+      <button class="btn btn-sm btn-ghost" onclick="editEvent(${e.id})" data-i18n="edit">Edit</button>
+      <button class="btn btn-sm btn-danger" onclick="deleteEvent(${e.id})" data-i18n="delete">Delete</button>
+    </div>
+  `).join(''), `<button class="btn btn-ghost" onclick="closeModal()" data-i18n="close">Close</button>`);
+  window.i18n.apply();
+}
+
+function showAddEvent(dateStr='') {
+  openModal('Add Event', `
+    <div class="form-group"><label data-i18n="name">Title</label><input class="input" id="efTitle"></div>
+    <div class="form-group"><label data-i18n="type">Type</label><select class="input" id="efType"><option value="meeting" data-i18n="meeting">Meeting</option><option value="showing" data-i18n="showing">Showing</option><option value="follow_up" data-i18n="follow_up">Follow-up</option><option value="call" data-i18n="call">Call</option><option value="reminder" data-i18n="reminder">Reminder</option></select></div>
+    <div class="form-group"><label>Date</label><input class="input" type="date" id="efDate" value="${dateStr}"></div>
+    <div class="form-group"><label>Time</label><input class="input" type="time" id="efTime"></div>
+    <div class="form-group"><label data-i18n="description">Description</label><textarea class="input" id="efDescription"></textarea></div>
+  `, `
+    <button class="btn btn-ghost" onclick="closeModal()" data-i18n="cancel">Cancel</button>
+    <button class="btn btn-primary" onclick="saveEvent()" data-i18n="save">Save</button>
+  `);
+  window.i18n.apply();
+}
+
+async function editEvent(id) {
+  const data = await api('/api/calendar/' + id);
+  if (!data) return;
+  openModal('Edit Event', `
+    <div class="form-group"><label data-i18n="name">Title</label><input class="input" id="efTitle" value="${escapeHtml(data.title)}"></div>
+    <div class="form-group"><label data-i18n="type">Type</label><select class="input" id="efType"><option value="meeting" ${data.type==='meeting'?'selected':''} data-i18n="meeting">Meeting</option><option value="showing" ${data.type==='showing'?'selected':''} data-i18n="showing">Showing</option><option value="follow_up" ${data.type==='follow_up'?'selected':''} data-i18n="follow_up">Follow-up</option><option value="call" ${data.type==='call'?'selected':''} data-i18n="call">Call</option><option value="reminder" ${data.type==='reminder'?'selected':''} data-i18n="reminder">Reminder</option></select></div>
+    <div class="form-group"><label>Date</label><input class="input" type="date" id="efDate" value="${data.date.split('T')[0]}"></div>
+    <div class="form-group"><label>Time</label><input class="input" type="time" id="efTime" value="${data.time || ''}"></div>
+    <div class="form-group"><label data-i18n="description">Description</label><textarea class="input" id="efDescription">${escapeHtml(data.description || '')}</textarea></div>
+  `, `
+    <button class="btn btn-ghost" onclick="closeModal()" data-i18n="cancel">Cancel</button>
+    <button class="btn btn-primary" onclick="saveEvent(${id})" data-i18n="save">Save</button>
+  `);
+  window.i18n.apply();
+}
+
+async function saveEvent(id) {
+  const body = {
+    title: document.getElementById('efTitle').value.trim(),
+    type: document.getElementById('efType').value,
+    date: document.getElementById('efDate').value,
+    time: document.getElementById('efTime').value || null,
+    description: document.getElementById('efDescription').value.trim()
+  };
+  if (!body.title || !body.date) { showToast('Title and date are required', 'error'); return; }
+
+  const url = id ? '/api/calendar/' + id : '/api/calendar';
+  const method = id ? 'PUT' : 'POST';
+  const resp = await fetch(url, { method, headers: { 'Authorization': 'Bearer ' + localStorage.getItem('access_token'), 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  if (resp.ok) { closeModal(); showToast(id ? 'Event updated!' : 'Event added!', 'success'); renderCalendar(); }
+  else { const err = await resp.json().catch(() => ({ detail: 'Error' })); showToast(err.detail || 'Error', 'error'); }
+}
+
+async function deleteEvent(id) {
+  if (!confirm('Are you sure?')) return;
+  const resp = await fetch('/api/calendar/' + id, { method: 'DELETE', headers: { 'Authorization': 'Bearer ' + localStorage.getItem('access_token') } });
+  if (resp.ok) { closeModal(); showToast('Event deleted', 'success'); renderCalendar(); }
+  else showToast('Error deleting event', 'error');
+}
+
+renderCalendar();
+</script>
+{% endblock %}

@@ -1,0 +1,179 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 data-i18n="settings">Settings</h1>
+  </div>
+</div>
+
+<div class="grid" style="max-width:600px">
+  <div class="card">
+    <h3 style="margin-bottom:4px;font-size:16px" data-i18n="language">Language</h3>
+    <p style="color:var(--text2);font-size:13px;margin-bottom:16px">Toggle between Arabic and English</p>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-ghost" onclick="toggleLang()"><span data-i18n="arabic">العربية</span> / <span data-i18n="english">English</span></button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-bottom:4px;font-size:16px" data-i18n="profile">Profile</h3>
+    <p style="color:var(--text2);font-size:13px;margin-bottom:16px">Your account information</p>
+    <div id="profileInfo"><div class="loading-spinner"></div></div>
+  </div>
+
+  <div class="card" style="border-color:rgba(108,92,231,0.3)">
+    <h3 style="margin-bottom:4px;font-size:16px;color:var(--primary2)" data-i18n="donate">Support the Project</h3>
+    <p style="color:var(--text2);font-size:13px;margin-bottom:12px">Help keep EL-Wasset free and growing</p>
+    <div style="background:var(--bg2);padding:16px;border-radius:var(--radius2);text-align:center">
+      <p style="font-size:18px;font-weight:700;color:var(--accent)" data-i18n="donation_text">Vodafone Cash: 01037076001</p>
+      <p style="font-size:12px;color:var(--text3);margin-top:4px">Egypt only · Vodafone Cash</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-bottom:4px;font-size:16px" data-i18n="about">About</h3>
+    <p style="color:var(--text2);font-size:13px;margin-bottom:8px">EL-Wasset CRM v1.0.0</p>
+    <p style="color:var(--text3);font-size:12px">Built with ❤️ for Egyptian real estate brokers</p>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-bottom:4px;font-size:16px;color:var(--accent)">🤖 Gemini AI</h3>
+    <p style="color:var(--text2);font-size:13px;margin-bottom:12px">API key and model settings for AI assistant</p>
+    <div class="form-group">
+      <label style="font-size:12px;color:var(--text3)">API Key</label>
+      <input class="input" id="geminiKey" placeholder="Paste Gemini API key..." style="font-family:monospace;font-size:13px">
+    </div>
+    <div class="form-group">
+      <label style="font-size:12px;color:var(--text3)">Model</label>
+      <select class="input" id="geminiModel">
+        <option value="gemini-2.5-flash">Gemini 2.5 Flash ✅</option>
+        <option value="gemini-2.0-flash">Gemini 2.0 Flash (may have quota issues)</option>
+        <option value="gemini-2.5-pro">Gemini 2.5 Pro</option>
+        <option value="gemini-2.5-flash-image">Gemini 2.5 Flash (images)</option>
+      </select>
+    </div>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-primary btn-sm" onclick="saveGeminiKey()" data-i18n="save">Save</button>
+      <button class="btn btn-ghost btn-sm" onclick="testGeminiKey()">Test</button>
+    </div>
+    <span id="geminiKeyStatus" style="font-size:12px;margin-left:8px;color:var(--text3)"></span>
+    <div id="geminiTestResult" style="margin-top:8px;font-size:12px"></div>
+  </div>
+
+  <div class="card" id="devUnlockCard" style="border-color:rgba(255,107,107,0.2);display:none">
+    <h3 style="margin-bottom:4px;font-size:16px;color:var(--danger)">🔐 Dev Mode</h3>
+    <p style="color:var(--text2);font-size:13px;margin-bottom:12px">Enter name + unique code to unlock developer tools</p>
+    <div class="form-group"><label>Name/Email</label><input class="input" id="devName" value="gh221186@gmail.com"></div>
+    <div class="form-group"><label>Unique Code</label><input class="input" type="password" id="devCode" placeholder="Enter code"></div>
+    <button class="btn btn-danger" onclick="unlockDevMode()">🔓 Unlock Dev Panel</button>
+    <p id="devUnlockMsg" style="font-size:12px;margin-top:8px;color:var(--text3)"></p>
+  </div>
+
+  <div id="devStatusBadge" style="display:none"></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function saveGeminiKey() {
+  const key = document.getElementById('geminiKey').value.trim();
+  const model = document.getElementById('geminiModel').value;
+  const status = document.getElementById('geminiKeyStatus');
+  let ok = true;
+  if (key) {
+    let r = await fetch('/api/settings/gemini_api_key', {
+      method: 'PUT', headers: { 'Authorization': 'Bearer ' + localStorage.getItem('access_token'), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key: 'gemini_api_key', value: key })
+    });
+    if (!r.ok) ok = false;
+  }
+  let r2 = await fetch('/api/settings/gemini_model', {
+    method: 'PUT', headers: { 'Authorization': 'Bearer ' + localStorage.getItem('access_token'), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ key: 'gemini_model', value: model })
+  });
+  if (!r2.ok) ok = false;
+  status.textContent = ok ? '✅ Saved!' : '❌ Error saving';
+  status.style.color = ok ? 'var(--success)' : 'var(--danger)';
+}
+
+async function loadGeminiKey() {
+  const token = localStorage.getItem('access_token');
+  const h = { 'Authorization': 'Bearer ' + token };
+  let r = await fetch('/api/settings/gemini_api_key', { headers: h });
+  if (r.ok) { const d = await r.json(); if (d.value) document.getElementById('geminiKey').value = d.value; }
+  let r2 = await fetch('/api/settings/gemini_model', { headers: h });
+  if (r2.ok) { const d = await r2.json(); if (d.value) document.getElementById('geminiModel').value = d.value; }
+}
+
+async function testGeminiKey() {
+  const el = document.getElementById('geminiTestResult');
+  el.innerHTML = '<span class="loading-spinner"></span> Testing...';
+  try {
+    const r = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + localStorage.getItem('access_token'), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: 'Say "Hello, I am working!" in one line.' })
+    });
+    const d = await r.json();
+    if (d.response && !d.response.includes('⚠️')) {
+      el.innerHTML = '<span style="color:var(--success)">✅ AI is working!</span>';
+    } else {
+      el.innerHTML = '<span style="color:var(--danger)">❌ ' + (d.response || 'Error') + '</span>';
+    }
+  } catch(e) {
+    el.innerHTML = '<span style="color:var(--danger)">❌ Connection error</span>';
+  }
+}
+
+async function setLangUI(lang) {
+  await toggleLang();
+}
+
+async function loadProfile() {
+  const data = await api('/api/auth/me');
+  if (!data) return;
+  document.getElementById('profileInfo').innerHTML = `
+    <p style="margin-bottom:4px"><strong>${escapeHtml(data.name)}</strong></p>
+    <p style="color:var(--text2);font-size:13px">${escapeHtml(data.email)}</p>
+    <p style="color:var(--text3);font-size:12px">${data.phone ? escapeHtml(data.phone) : ''}</p>
+  `;
+}
+
+let aboutTapCount = 0;
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelector('[data-i18n="about"]')?.addEventListener('click', () => {
+    aboutTapCount++;
+    if (aboutTapCount >= 5) {
+      document.getElementById('devUnlockCard').style.display = 'block';
+      aboutTapCount = 0;
+    }
+  });
+});
+
+if (localStorage.getItem('dev_unlocked')) {
+  const badge = document.getElementById('devStatusBadge');
+  badge.style.display = 'block';
+  const lang = localStorage.getItem('lang') || 'ar';
+  badge.innerHTML = '<div style="position:fixed;bottom:80px;right:16px;z-index:999;background:var(--danger);color:#fff;padding:8px 16px;border-radius:20px;font-size:12px;font-weight:600;cursor:pointer" onclick="window.location.href=\'/dev?lang=' + lang + '\'">🔐 Dev Mode</div>';
+}
+
+function unlockDevMode() {
+  const name = document.getElementById('devName').value.trim().toLowerCase();
+  const code = document.getElementById('devCode').value.trim();
+  const msg = document.getElementById('devUnlockMsg');
+  const lang = localStorage.getItem('lang') || 'ar';
+  if (name !== 'gh221186@gmail.com' || code !== 'ntra') {
+    localStorage.removeItem('dev_unlocked');
+    window.location.href = '/dashboard?lang=' + lang;
+    return;
+  }
+  localStorage.setItem('dev_unlocked', JSON.stringify({ name, code, expires: Date.now() + 86400000 }));
+  msg.textContent = '✅ Dev mode unlocked! Redirecting...';
+  msg.style.color = 'var(--success)';
+  setTimeout(() => window.location.href = '/dev?lang=' + lang, 1000);
+}
+
+loadProfile();
+loadGeminiKey();
+</script>
+{% endblock %}

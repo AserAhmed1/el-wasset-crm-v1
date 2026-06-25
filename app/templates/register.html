@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+{% block content %}
+<style>
+.auth-page{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
+.auth-card{width:100%;max-width:400px;padding:40px;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);animation:slideUp 0.5s ease}
+.auth-card .logo{text-align:center;margin-bottom:32px}
+.auth-card .logo svg{width:48px;height:48px;color:var(--primary)}
+.auth-card .logo h1{font-size:24px;margin-top:12px;background:linear-gradient(135deg,var(--primary),var(--accent));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.auth-card .logo p{color:var(--text2);font-size:14px;margin-top:4px;-webkit-text-fill-color:var(--text2)}
+.auth-card .form-group{margin-bottom:20px}
+.auth-card .btn{width:100%;padding:14px}
+.auth-card .auth-footer{text-align:center;margin-top:20px;font-size:14px;color:var(--text2)}
+.auth-card .auth-footer a{color:var(--primary2);font-weight:600}
+.auth-error{background:rgba(255,107,107,0.1);border:1px solid rgba(255,107,107,0.3);border-radius:var(--radius3);padding:12px 16px;color:var(--danger);font-size:13px;margin-bottom:16px;display:none}
+</style>
+<div class="auth-page">
+  <div class="auth-card">
+    <div class="logo">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+      <h1 data-i18n="app_name">EL-Wasset</h1>
+      <p data-i18n="register">Register</p>
+    </div>
+
+    <div class="auth-error" id="authError"></div>
+
+    <div class="form-group">
+      <label data-i18n="name">Name</label>
+      <input class="input" type="text" id="regName" data-i18n-placeholder="name" placeholder="Name">
+    </div>
+    <div class="form-group">
+      <label data-i18n="phone">Phone</label>
+      <input class="input" type="tel" id="regPhone" data-i18n-placeholder="phone" placeholder="Phone">
+    </div>
+    <div class="form-group">
+      <label data-i18n="email">Email</label>
+      <input class="input" type="email" id="regEmail" data-i18n-placeholder="email" placeholder="Email">
+    </div>
+    <div class="form-group">
+      <label data-i18n="brokerage_name">Brokerage Name</label>
+      <input class="input" type="text" id="regBrokerage" data-i18n-placeholder="brokerage_name" placeholder="Brokerage Name">
+    </div>
+    <div class="form-group">
+      <label data-i18n="password">Password</label>
+      <input class="input" type="password" id="regPassword" data-i18n-placeholder="password" placeholder="Password">
+    </div>
+    <button class="btn btn-primary" onclick="handleRegister()" id="regBtn"><span data-i18n="register">Register</span></button>
+    <div class="auth-footer">
+      <span data-i18n="have_account">Already have an account?</span> <a href="/login" data-i18n="login">Login</a>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function handleRegister() {
+  const name = document.getElementById('regName').value.trim();
+  const phone = document.getElementById('regPhone').value.trim();
+  const email = document.getElementById('regEmail').value.trim();
+  const brokerage = document.getElementById('regBrokerage').value.trim();
+  const password = document.getElementById('regPassword').value;
+  const btn = document.getElementById('regBtn');
+  const err = document.getElementById('authError');
+
+  if (!name || !phone || !email || !brokerage || !password) {
+    err.textContent = 'Please fill in all fields';
+    err.style.display = 'block';
+    return;
+  }
+
+  err.style.display = 'none';
+  btn.disabled = true;
+  btn.innerHTML = '<span class="loading-spinner"></span>';
+
+  try {
+    const resp = await fetch('/api/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, phone, email, brokerage_name: brokerage, password })
+    });
+    const data = await resp.json();
+
+    if (!resp.ok) {
+      err.textContent = data.detail || 'Registration failed';
+      err.style.display = 'block';
+      btn.disabled = false;
+      btn.innerHTML = '<span data-i18n="register">Register</span>';
+      window.i18n.apply();
+      return;
+    }
+
+    if (data.access_token) {
+      localStorage.setItem('access_token', data.access_token);
+      localStorage.setItem('refresh_token', data.refresh_token);
+      localStorage.removeItem('dev_otp_code');
+      localStorage.removeItem('dev_otp_email');
+      showToast('✅ Registered! Redirecting...', 'success');
+      setTimeout(() => window.location.href = '/dashboard?lang=' + (localStorage.getItem('lang') || 'ar'), 1000);
+    } else if (data.dev_otp) {
+      localStorage.setItem('dev_otp_code', data.dev_otp);
+      localStorage.setItem('dev_otp_email', email);
+      showToast('⚡ Dev OTP: ' + data.dev_otp, 'success');
+      setTimeout(() => window.location.href = '/login?lang=' + (localStorage.getItem('lang') || 'ar'), 2000);
+    } else {
+      showToast('Registration successful! Check your email for OTP.', 'success');
+      setTimeout(() => window.location.href = '/login?lang=' + (localStorage.getItem('lang') || 'ar'), 2000);
+    }
+  } catch (e) {
+    err.textContent = 'Connection error';
+    err.style.display = 'block';
+    btn.disabled = false;
+    btn.innerHTML = '<span data-i18n="register">Register</span>';
+    window.i18n.apply();
+  }
+}
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') handleRegister();
+});
+</script>
+{% endblock %}

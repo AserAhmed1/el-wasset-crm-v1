@@ -1,0 +1,174 @@
+{% extends "base.html" %}
+{% block content %}
+<style>
+.dev-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px}
+.dev-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:24px;transition:var(--transition)}
+.dev-card:hover{border-color:var(--primary);box-shadow:0 4px 20px rgba(108,92,231,0.2)}
+.dev-card .dev-icon{width:48px;height:48px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:24px;margin-bottom:12px}
+.dev-card h3{font-size:18px;margin-bottom:4px}
+.dev-card p{font-size:13px;color:var(--text2);margin-bottom:16px}
+.dev-badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;background:var(--primary3);color:var(--primary2);margin-bottom:12px}
+.error-item{padding:8px;border-bottom:1px solid var(--border);font-size:12px}
+.error-item .level{display:inline-block;padding:2px 6px;border-radius:3px;font-size:10px;font-weight:600;margin-right:4px}
+.level-error{background:rgba(255,107,107,0.15);color:var(--danger)}
+.level-critical{background:rgba(255,107,107,0.3);color:var(--danger);animation:pulse 1.5s infinite}
+</style>
+
+<div class="page-header">
+  <div>
+    <h1>🧪 Dev Panel</h1>
+    <p class="subtitle">Hermes · Coder · Discovery — AI tools for development</p>
+  </div>
+</div>
+
+<div class="dev-grid stagger">
+  <div class="dev-card animate-in">
+    <div class="dev-icon" style="background:rgba(108,92,231,0.15);color:var(--primary2)">🔍</div>
+    <div class="dev-badge">Hermes • Active</div>
+    <h3>Error Monitor</h3>
+    <p>Monitors errors, sends alerts to gh221186@gmail.com</p>
+    <div id="hermesContent"><span class="loading-spinner"></span></div>
+  </div>
+
+  <div class="dev-card">
+    <div class="dev-icon" style="background:rgba(0,206,201,0.15);color:var(--accent)">🤖</div>
+    <div class="dev-badge">Discovery • Active</div>
+    <h3>Pattern Analysis</h3>
+    <p>Chat pattern analysis & feature gap detection</p>
+    <div id="discoveryContent"><span class="loading-spinner"></span></div>
+    <button class="btn btn-sm btn-ghost" onclick="runDiscovery()" style="margin-top:8px">🔄 Run Analysis</button>
+  </div>
+
+  <div class="dev-card">
+    <div class="dev-icon" style="background:rgba(253,203,110,0.15);color:var(--warning)">📋</div>
+    <div class="dev-badge">System</div>
+    <h3>Audit Logs</h3>
+    <p>Recent security & resource events</p>
+    <button class="btn btn-sm btn-ghost" onclick="loadAuditLogs()">Load Logs</button>
+    <div id="auditContent" style="margin-top:8px;font-size:12px;color:var(--text3)"></div>
+  </div>
+
+  <div class="dev-card">
+    <div class="dev-icon" style="background:rgba(0,184,148,0.15);color:var(--success)">⚡</div>
+    <div class="dev-badge">Performance</div>
+    <h3>API Status</h3>
+    <p>Endpoint health check</p>
+    <button class="btn btn-sm btn-ghost" onclick="checkAPI()">Check All</button>
+    <div id="apiContent" style="margin-top:8px;font-size:12px"></div>
+  </div>
+
+  <div class="dev-card">
+    <div class="dev-icon" style="background:rgba(255,107,107,0.15);color:var(--danger)">🔐</div>
+    <div class="dev-badge">Debug</div>
+    <h3>Session Info</h3>
+    <div id="debugContent" style="font-size:12px;color:var(--text3)"></div>
+  </div>
+
+  <div class="dev-card">
+    <div class="dev-icon" style="background:rgba(108,92,231,0.15);color:var(--primary2)">📦</div>
+    <div class="dev-badge">Deploy</div>
+    <h3>Ready for Production</h3>
+    <p>Render free tier config ready</p>
+    <div style="font-size:12px;color:var(--text2)">
+      ✓ render.yaml configured<br>
+      ✓ SQLite → PostgreSQL ready<br>
+      ✓ PWA manifest + service worker<br>
+      ✓ Safari Add to Home Screen<br>
+      ✓ Security layers active
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function loadHermes() {
+  try {
+    const data = await api('/api/dev/hermes');
+    if (!data) return;
+    const el = document.getElementById('hermesContent');
+    const errors = data.recent_errors || [];
+    const pending = data.pending_fixes || [];
+    el.innerHTML = `
+      <p style="font-size:13px;margin-bottom:8px">${errors.length} errors (24h) · ${pending.length} pending fixes</p>
+      ${errors.slice(0, 5).map(e => `
+        <div class="error-item">
+          <span class="level level-${e.level}">${e.level}</span>
+          ${escapeHtml(e.message.substring(0, 100))}
+          <span style="color:var(--text3);font-size:10px;display:block">${fmtDate(e.created_at)}</span>
+        </div>
+      `).join('')}
+      ${errors.length === 0 ? '<p style="color:var(--success);font-size:13px">✅ No errors in last 24h</p>' : ''}
+    `;
+  } catch(e) { document.getElementById('hermesContent').innerHTML = '<p style="color:var(--text3)">Not available</p>'; }
+}
+
+async function loadDiscovery() {
+  try {
+    const data = await api('/api/dev/discovery');
+    if (!data || !data.analysis) return;
+    const a = data.analysis;
+    const el = document.getElementById('discoveryContent');
+    el.innerHTML = `
+      <p style="font-size:13px;margin-bottom:4px">Messages: ${a.message_count || 0}</p>
+      ${(a.feature_gaps || []).slice(0, 3).map(g => `
+        <p style="font-size:12px;color:var(--warning);padding:4px 0">! ${escapeHtml(g)}</p>
+      `).join('')}
+      ${(!a.feature_gaps || a.feature_gaps.length === 0) ? '<p style="color:var(--text3);font-size:12px">No gaps detected</p>' : ''}
+    `;
+  } catch(e) { document.getElementById('discoveryContent').innerHTML = '<p style="color:var(--text3)">Not available</p>'; }
+}
+
+async function runDiscovery() {
+  showToast('Running analysis...', '');
+  const data = await api('/api/dev/discovery/analyze', { method: 'POST' });
+  if (data) showToast('Analysis complete!', 'success');
+  loadDiscovery();
+}
+
+async function loadAuditLogs() {
+  const el = document.getElementById('auditContent');
+  el.innerHTML = '<span class="loading-spinner"></span>';
+  try {
+    const data = await api('/api/dev/audit-logs');
+    const logs = data?.audit_logs || [];
+    el.innerHTML = logs.slice(0, 10).map(l =>
+      `<div style="padding:4px 0;border-bottom:1px solid var(--border);font-size:12px">
+        <span style="color:var(--primary2)">${escapeHtml(l.action)}</span>
+        <span style="color:var(--text3)">${escapeHtml(l.resource_type)} #${l.resource_id}</span>
+        <span style="color:var(--text3);float:right">${fmtDate(l.created_at)}</span>
+      </div>`
+    ).join('') || '<p style="color:var(--text3)">No logs</p>';
+  } catch { el.innerHTML = '<p style="color:var(--text3)">Not available</p>'; }
+}
+
+async function checkAPI() {
+  const el = document.getElementById('apiContent');
+  const endpoints = ['/api/auth/me', '/api/reports/dashboard', '/api/contacts?per_page=1', '/api/properties?per_page=1', '/api/deals/pipeline', '/api/tasks?per_page=1', '/api/dev/hermes', '/api/dev/discovery'];
+  el.innerHTML = '';
+  for (const url of endpoints) {
+    const start = performance.now();
+    try {
+      const resp = await fetch(url, { headers: { 'Authorization': 'Bearer ' + localStorage.getItem('access_token') } });
+      const ms = (performance.now() - start).toFixed(0);
+      el.innerHTML += `<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--border);font-size:11px"><span>${url}</span><span style="color:${resp.ok ? 'var(--success)' : 'var(--danger)'}">${resp.status} (${ms}ms)</span></div>`;
+    } catch {
+      el.innerHTML += `<div style="display:flex;justify-content:space-between;padding:4px 0;color:var(--danger);font-size:11px"><span>${url}</span><span>Error</span></div>`;
+    }
+  }
+}
+
+async function loadDebug() {
+  document.getElementById('debugContent').innerHTML = `
+    <p>Token: ${(localStorage.getItem('access_token') || '').substring(0, 20)}...</p>
+    <p>Lang: ${localStorage.getItem('lang') || 'ar'}</p>
+    <p>Dev: ${localStorage.getItem('dev_unlocked') ? '✅ Active' : '❌ Inactive'}</p>
+    <p>UA: ${navigator.userAgent.substring(0, 60)}</p>
+  `;
+}
+
+loadHermes();
+loadDiscovery();
+loadDebug();
+</script>
+{% endblock %}

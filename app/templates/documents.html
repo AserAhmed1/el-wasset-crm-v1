@@ -1,0 +1,137 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 data-i18n="documents">Documents</h1>
+    <p class="subtitle"><span id="docCount">0</span> <span data-i18n="documents">Documents</span></p>
+  </div>
+</div>
+
+<div class="filter-bar">
+  <select class="input" style="max-width:200px" id="docTypeFilter" onchange="renderDocuments()">
+    <option value="" data-i18n="all">All</option>
+    <option value="contract" data-i18n="contract">Contract</option>
+    <option value="id_copy">ID Copy</option>
+    <option value="property_doc">Property Doc</option>
+    <option value="other" data-i18n="other">Other</option>
+  </select>
+</div>
+
+<!-- Upload zone -->
+<div class="upload-zone" id="uploadZone" onclick="document.getElementById('fileInput').click()">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+  <p data-i18n="upload_file">Click to upload or drag & drop (max 10MB)</p>
+  <input type="file" id="fileInput" style="display:none" onchange="handleFileUpload(this.files[0])">
+  <div id="uploadProgress" style="display:none;margin-top:12px">
+    <div style="height:4px;background:var(--bg2);border-radius:4px;overflow:hidden">
+      <div id="uploadBar" style="height:100%;width:0%;background:var(--primary);border-radius:4px;transition:width 0.3s"></div>
+    </div>
+  </div>
+</div>
+
+<div id="documentsList" style="margin-top:20px;min-height:200px">
+  <div class="loading-spinner" style="margin:40px auto;display:block"></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function renderDocuments() {
+  const type = document.getElementById('docTypeFilter').value;
+  const params = new URLSearchParams({ per_page: 50 });
+  if (type) params.set('type', type);
+
+  const data = await api('/api/documents?' + params.toString());
+  if (!data) return;
+
+  document.getElementById('docCount').textContent = data.total || 0;
+  const list = document.getElementById('documentsList');
+
+  if (!data.items || !data.items.length) {
+    list.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-icon">📄</div>
+        <p data-i18n="no_documents">No documents yet.</p>
+      </div>
+    `;
+    window.i18n.apply();
+    return;
+  }
+
+  list.innerHTML = `<div style="display:flex;flex-direction:column;gap:8px">${data.items.map(d => {
+    const ext = (d.filename || '').split('.').pop().toLowerCase();
+    const iconMap = { pdf: '📕', doc: '📘', docx: '📘', xls: '📗', xlsx: '📗', jpg: '🖼️', jpeg: '🖼️', png: '🖼️', mp3: '🎵', mp4: '🎬' };
+    return `
+      <div class="file-card">
+        <div class="file-icon">${iconMap[ext] || '📄'}</div>
+        <div class="file-info">
+          <h4>${escapeHtml(d.filename)}</h4>
+          <p>${d.file_size ? (d.file_size/1024).toFixed(1) + ' KB' : ''} · ${d.type || ''} · ${fmtDate(d.created_at)}</p>
+        </div>
+        <div class="file-actions">
+          <a href="/api/documents/${d.id}/download" class="btn btn-sm btn-ghost" target="_blank" data-i18n="download">Download</a>
+          <button class="btn btn-sm btn-danger" onclick="deleteDocument(${d.id})" data-i18n="delete">Delete</button>
+        </div>
+      </div>
+    `;
+  }).join('')}</div>`;
+
+  window.i18n.apply();
+
+  // Drag & drop
+  setupDragDrop();
+}
+
+let uploadXhr = null;
+function handleFileUpload(file) {
+  if (!file) return;
+  if (file.size > 10 * 1024 * 1024) { showToast('File too large (max 10MB)', 'error'); return; }
+
+  const progress = document.getElementById('uploadProgress');
+  const bar = document.getElementById('uploadBar');
+  progress.style.display = 'block';
+  bar.style.width = '0%';
+
+  const type = prompt('Document type (contract, id_copy, property_doc, other):') || 'other';
+
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('type', type);
+
+  const xhr = new XMLHttpRequest();
+  uploadXhr = xhr;
+  xhr.upload.onprogress = (e) => {
+    if (e.lengthComputable) bar.style.width = (e.loaded / e.total * 100) + '%';
+  };
+  xhr.onload = () => {
+    progress.style.display = 'none';
+    if (xhr.status === 200) { showToast('File uploaded!', 'success'); renderDocuments(); }
+    else { showToast('Upload failed', 'error'); }
+  };
+  xhr.onerror = () => { progress.style.display = 'none'; showToast('Upload failed', 'error'); };
+  xhr.open('POST', '/api/documents');
+  xhr.setRequestHeader('Authorization', 'Bearer ' + localStorage.getItem('access_token'));
+  xhr.send(formData);
+}
+
+function setupDragDrop() {
+  const zone = document.getElementById('uploadZone');
+  zone.addEventListener('dragover', (e) => { e.preventDefault(); zone.classList.add('dragover'); });
+  zone.addEventListener('dragleave', () => { zone.classList.remove('dragover'); });
+  zone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    zone.classList.remove('dragover');
+    if (e.dataTransfer.files.length) handleFileUpload(e.dataTransfer.files[0]);
+  });
+}
+
+async function deleteDocument(id) {
+  if (!confirm('Are you sure?')) return;
+  const resp = await fetch('/api/documents/' + id, { method: 'DELETE', headers: { 'Authorization': 'Bearer ' + localStorage.getItem('access_token') } });
+  if (resp.ok) { showToast('Document deleted', 'success'); renderDocuments(); }
+  else showToast('Error deleting document', 'error');
+}
+
+renderDocuments();
+</script>
+{% endblock %}

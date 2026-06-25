@@ -1,0 +1,180 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 data-i18n="contacts">Contacts</h1>
+    <p class="subtitle"><span id="contactCount">0</span> <span data-i18n="total_contacts">Contacts</span></p>
+  </div>
+  <button class="btn btn-primary" onclick="showAddContact()">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+    <span data-i18n="add_contact">Add Contact</span>
+  </button>
+</div>
+
+<div class="filter-bar">
+  <input class="input" style="max-width:320px" type="text" id="contactSearch" data-i18n-placeholder="search_contacts" placeholder="Search by name or phone..." oninput="renderContacts(1, this.value)">
+  <select class="input" style="max-width:160px" id="contactTypeFilter" onchange="renderContacts(1)">
+    <option value="" data-i18n="all">All</option>
+    <option value="buyer" data-i18n="buyer">Buyer</option>
+    <option value="seller" data-i18n="seller">Seller</option>
+    <option value="agent" data-i18n="agent">Agent</option>
+    <option value="other" data-i18n="other">Other</option>
+  </select>
+</div>
+
+<div id="contactsList" style="min-height:200px">
+  <div class="loading-spinner" style="margin:40px auto;display:block"></div>
+</div>
+
+<div class="pagination" id="contactsPagination"></div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let currentContactPage = 1;
+
+async function renderContacts(page=1, search='') {
+  currentContactPage = page;
+  const type = document.getElementById('contactTypeFilter').value;
+  const params = new URLSearchParams({ page, per_page: 20 });
+  if (search) params.set('search', search);
+  if (type) params.set('type', type);
+
+  const data = await api('/api/contacts?' + params.toString());
+  if (!data) return;
+
+  document.getElementById('contactCount').textContent = data.total || 0;
+  const list = document.getElementById('contactsList');
+
+  if (!data.items || !data.items.length) {
+    list.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-icon">👥</div>
+        <p data-i18n="no_contacts">No contacts yet. Add your first contact!</p>
+        <button class="btn btn-primary" onclick="showAddContact()" data-i18n="add_contact">Add Contact</button>
+      </div>
+    `;
+    document.getElementById('contactsPagination').innerHTML = '';
+    window.i18n.apply();
+    return;
+  }
+
+  list.innerHTML = `<div class="table-wrap"><table>
+    <thead><tr>
+      <th data-i18n="name">Name</th>
+      <th data-i18n="phone">Phone</th>
+      <th data-i18n="type">Type</th>
+      <th data-i18n="source">Source</th>
+      <th data-i18n="created_at">Created</th>
+      <th></th>
+    </tr></thead>
+    <tbody>${data.items.map(c => `
+      <tr>
+        <td style="font-weight:600;color:var(--text)">${escapeHtml(c.name)}</td>
+        <td>${escapeHtml(c.phone || '')}</td>
+        <td><span class="badge badge-ghost">${window.i18n.t(c.type || 'other')}</span></td>
+        <td>${escapeHtml(c.source || '')}</td>
+        <td style="color:var(--text3);font-size:13px">${fmtDate(c.created_at)}</td>
+        <td style="text-align:right;white-space:nowrap">
+          <button class="btn btn-sm btn-ghost" onclick="showEditContact(${c.id})" data-i18n="edit">Edit</button>
+          <button class="btn btn-sm btn-danger" onclick="deleteContact(${c.id})" data-i18n="delete">Delete</button>
+        </td>
+      </tr>
+    `).join('')}</tbody>
+  </table></div>`;
+
+  // Pagination
+  const totalPages = Math.ceil(data.total / 20);
+  if (totalPages > 1) {
+    let phtml = '';
+    if (page > 1) phtml += `<button class="btn btn-sm btn-ghost" onclick="renderContacts(${page-1}, '${document.getElementById('contactSearch').value}')" data-i18n="previous">Previous</button>`;
+    phtml += `<span style="font-size:13px;color:var(--text3);padding:0 12px" data-i18n="page">Page</span> ${page} / ${totalPages}`;
+    if (page < totalPages) phtml += `<button class="btn btn-sm btn-ghost" onclick="renderContacts(${page+1}, '${document.getElementById('contactSearch').value}')" data-i18n="next">Next</button>`;
+    document.getElementById('contactsPagination').innerHTML = phtml;
+  } else {
+    document.getElementById('contactsPagination').innerHTML = '';
+  }
+
+  window.i18n.apply();
+}
+
+async function showAddContact() {
+  openModal(
+    document.querySelector('[data-i18n="add_contact"]')?.textContent || 'Add Contact',
+    `
+      <div class="form-group"><label data-i18n="name">Name</label><input class="input" id="cfName"></div>
+      <div class="form-group"><label data-i18n="phone">Phone</label><input class="input" id="cfPhone" data-i18n-placeholder="multiple_phones_hint" placeholder="Multiple numbers: separate with comma"><small style="color:var(--text3);font-size:12px" data-i18n="multiple_phones_hint">Multiple numbers: separate with comma</small></div>
+      <div class="form-group"><label data-i18n="type">Type</label><select class="input" id="cfType"><option value="buyer" data-i18n="buyer">Buyer</option><option value="seller" data-i18n="seller">Seller</option><option value="agent" data-i18n="agent">Agent</option><option value="other" data-i18n="other">Other</option></select></div>
+      <div class="form-group"><label data-i18n="source">Source</label><input class="input" id="cfSource"></div>
+      <div class="form-group"><label data-i18n="notes">Notes</label><textarea class="input" id="cfNotes"></textarea></div>
+    `,
+    `<button class="btn btn-ghost" onclick="closeModal()" data-i18n="cancel">Cancel</button>
+     <button class="btn btn-primary" onclick="saveContact()" data-i18n="save">Save</button>`
+  );
+  window.i18n.apply();
+}
+
+async function showEditContact(id) {
+  const data = await api('/api/contacts/' + id);
+  if (!data) return;
+  openModal(
+    document.querySelector('[data-i18n="edit"]')?.textContent || 'Edit',
+    `
+      <div class="form-group"><label data-i18n="name">Name</label><input class="input" id="cfName" value="${escapeHtml(data.name)}"></div>
+      <div class="form-group"><label data-i18n="phone">Phone</label><input class="input" id="cfPhone" value="${escapeHtml(data.phone || '')}" data-i18n-placeholder="multiple_phones_hint"></div>
+      <div class="form-group"><label data-i18n="type">Type</label><select class="input" id="cfType"><option value="buyer" ${data.type==='buyer'?'selected':''} data-i18n="buyer">Buyer</option><option value="seller" ${data.type==='seller'?'selected':''} data-i18n="seller">Seller</option><option value="agent" ${data.type==='agent'?'selected':''} data-i18n="agent">Agent</option><option value="other" ${data.type==='other'?'selected':''} data-i18n="other">Other</option></select></div>
+      <div class="form-group"><label data-i18n="source">Source</label><input class="input" id="cfSource" value="${escapeHtml(data.source || '')}"></div>
+      <div class="form-group"><label data-i18n="notes">Notes</label><textarea class="input" id="cfNotes">${escapeHtml(data.notes || '')}</textarea></div>
+    `,
+    `<button class="btn btn-ghost" onclick="closeModal()" data-i18n="cancel">Cancel</button>
+     <button class="btn btn-primary" onclick="saveContact(${id})" data-i18n="save">Save</button>`
+  );
+  window.i18n.apply();
+}
+
+async function saveContact(id) {
+  const body = {
+    name: document.getElementById('cfName').value.trim(),
+    phone: document.getElementById('cfPhone').value.trim(),
+    type: document.getElementById('cfType').value,
+    source: document.getElementById('cfSource').value.trim(),
+    notes: document.getElementById('cfNotes').value.trim()
+  };
+  if (!body.name) { showToast('Name is required', 'error'); return; }
+
+  const url = id ? '/api/contacts/' + id : '/api/contacts';
+  const method = id ? 'PUT' : 'POST';
+
+  const resp = await fetch(url, {
+    method,
+    headers: { 'Authorization': 'Bearer ' + localStorage.getItem('access_token'), 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+
+  if (resp.ok) {
+    closeModal();
+    showToast(id ? 'Contact updated!' : 'Contact added!', 'success');
+    renderContacts(currentContactPage, document.getElementById('contactSearch').value);
+  } else {
+    const err = await resp.json().catch(() => ({ detail: 'Error' }));
+    showToast(err.detail || 'Error', 'error');
+  }
+}
+
+async function deleteContact(id) {
+  if (!confirm('Are you sure you want to delete this contact?')) return;
+  const resp = await fetch('/api/contacts/' + id, {
+    method: 'DELETE',
+    headers: { 'Authorization': 'Bearer ' + localStorage.getItem('access_token') }
+  });
+  if (resp.ok) {
+    showToast('Contact deleted', 'success');
+    renderContacts(currentContactPage, document.getElementById('contactSearch').value);
+  } else {
+    showToast('Error deleting contact', 'error');
+  }
+}
+
+renderContacts();
+</script>
+{% endblock %}

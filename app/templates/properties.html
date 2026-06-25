@@ -1,0 +1,198 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 data-i18n="properties">Properties</h1>
+    <p class="subtitle"><span id="propertyCount">0</span> <span data-i18n="total_properties">Properties</span></p>
+  </div>
+  <button class="btn btn-primary" onclick="showAddProperty()">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+    <span data-i18n="add_property">Add Property</span>
+  </button>
+</div>
+
+<div class="filter-bar">
+  <input class="input" style="max-width:320px" type="text" id="propertySearch" data-i18n-placeholder="search_properties" placeholder="Search by name or project..." oninput="renderProperties(1, this.value)">
+  <select class="input" style="max-width:160px" id="propertyTypeFilter" onchange="renderProperties(1)">
+    <option value="" data-i18n="all">All</option>
+    <option value="apartment" data-i18n="apartment">Apartment</option>
+    <option value="villa" data-i18n="villa">Villa</option>
+    <option value="land" data-i18n="land">Land</option>
+    <option value="commercial" data-i18n="commercial">Commercial</option>
+  </select>
+  <select class="input" style="max-width:160px" id="propertyStatusFilter" onchange="renderProperties(1)">
+    <option value="" data-i18n="all">All</option>
+    <option value="available" data-i18n="available">Available</option>
+    <option value="pending" data-i18n="pending">Pending</option>
+    <option value="sold" data-i18n="sold">Sold</option>
+    <option value="rented" data-i18n="rented">Rented</option>
+  </select>
+</div>
+
+<div id="propertiesList" style="min-height:200px">
+  <div class="loading-spinner" style="margin:40px auto;display:block"></div>
+</div>
+
+<div class="pagination" id="propertiesPagination"></div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let currentPropertyPage = 1;
+
+async function renderProperties(page=1, search='') {
+  currentPropertyPage = page;
+  const type = document.getElementById('propertyTypeFilter').value;
+  const status = document.getElementById('propertyStatusFilter').value;
+  const params = new URLSearchParams({ page, per_page: 20 });
+  if (search) params.set('search', search);
+  if (type) params.set('type', type);
+  if (status) params.set('status', status);
+
+  const data = await api('/api/properties?' + params.toString());
+  if (!data) return;
+
+  document.getElementById('propertyCount').textContent = data.total || 0;
+  const list = document.getElementById('propertiesList');
+
+  if (!data.items || !data.items.length) {
+    list.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-icon">🏠</div>
+        <p data-i18n="no_properties">No properties yet. Add your first property!</p>
+        <button class="btn btn-primary" onclick="showAddProperty()" data-i18n="add_property">Add Property</button>
+      </div>
+    `;
+    document.getElementById('propertiesPagination').innerHTML = '';
+    window.i18n.apply();
+    return;
+  }
+
+  list.innerHTML = `<div class="table-wrap"><table>
+    <thead><tr>
+      <th data-i18n="name">Name</th>
+      <th data-i18n="type">Type</th>
+      <th data-i18n="status">Status</th>
+      <th data-i18n="price">Price</th>
+      <th data-i18n="area">Area</th>
+      <th data-i18n="project">Project</th>
+      <th></th>
+    </tr></thead>
+    <tbody>${data.items.map(p => `
+      <tr>
+        <td style="font-weight:600;color:var(--text)">${escapeHtml(p.name)}</td>
+        <td><span class="badge badge-ghost">${window.i18n.t(p.type || '')}</span></td>
+        <td><span class="badge ${p.status === 'available' ? 'badge-success' : p.status === 'pending' ? 'badge-warning' : 'badge-danger'}">${window.i18n.t(p.status || '')}</span></td>
+        <td style="font-weight:600">${p.price ? fmtMoney(p.price) + ' EGP' : '-'}</td>
+        <td>${p.area ? p.area + ' m²' : '-'}</td>
+        <td>${escapeHtml(p.project || '-')}</td>
+        <td style="text-align:right;white-space:nowrap">
+          <button class="btn btn-sm btn-ghost" onclick="openPropertyDesigner(${p.id})" style="color:var(--accent)" title="Design">🎨</button>
+          <button class="btn btn-sm btn-ghost" onclick="showEditProperty(${p.id})" data-i18n="edit">Edit</button>
+          <button class="btn btn-sm btn-danger" onclick="deleteProperty(${p.id})" data-i18n="delete">Delete</button>
+        </td>
+      </tr>
+    `).join('')}</tbody>
+  </table></div>`;
+
+  const totalPages = Math.ceil(data.total / 20);
+  if (totalPages > 1) {
+    let phtml = '';
+    if (page > 1) phtml += `<button class="btn btn-sm btn-ghost" onclick="renderProperties(${page-1}, '${document.getElementById('propertySearch').value}')" data-i18n="previous">Previous</button>`;
+    phtml += `<span style="font-size:13px;color:var(--text3);padding:0 12px" data-i18n="page">Page</span> ${page} / ${totalPages}`;
+    if (page < totalPages) phtml += `<button class="btn btn-sm btn-ghost" onclick="renderProperties(${page+1}, '${document.getElementById('propertySearch').value}')" data-i18n="next">Next</button>`;
+    document.getElementById('propertiesPagination').innerHTML = phtml;
+  } else {
+    document.getElementById('propertiesPagination').innerHTML = '';
+  }
+
+  window.i18n.apply();
+}
+
+function showAddProperty() {
+  openModal('Add Property', `
+    <div class="form-group"><label data-i18n="name">Name</label><input class="input" id="pfName"></div>
+    <div class="form-group"><label data-i18n="type">Type</label><select class="input" id="pfType"><option value="apartment" data-i18n="apartment">Apartment</option><option value="villa" data-i18n="villa">Villa</option><option value="land" data-i18n="land">Land</option><option value="commercial" data-i18n="commercial">Commercial</option></select></div>
+    <div class="form-group"><label data-i18n="status">Status</label><select class="input" id="pfStatus"><option value="available" data-i18n="available">Available</option><option value="pending" data-i18n="pending">Pending</option><option value="sold" data-i18n="sold">Sold</option><option value="rented" data-i18n="rented">Rented</option></select></div>
+    <div class="form-group"><label data-i18n="price">Price</label><input class="input" type="number" id="pfPrice"></div>
+    <div class="form-group"><label data-i18n="area">Area (m²)</label><input class="input" type="number" id="pfArea"></div>
+    <div class="form-group"><label data-i18n="bedrooms">Bedrooms</label><input class="input" type="number" id="pfBedrooms"></div>
+    <div class="form-group"><label data-i18n="bathrooms">Bathrooms</label><input class="input" type="number" id="pfBathrooms"></div>
+    <div class="form-group"><label data-i18n="project">Project</label><input class="input" id="pfProject"></div>
+    <div class="form-group"><label data-i18n="developer">Developer</label><input class="input" id="pfDeveloper"></div>
+    <div class="form-group"><label data-i18n="address">Address</label><input class="input" id="pfAddress"></div>
+    <div class="form-group"><label data-i18n="description">Description</label><textarea class="input" id="pfDescription"></textarea></div>
+    <div class="form-group"><label data-i18n="installment_plan">Installment Plan</label><textarea class="input" id="pfInstallment"></textarea></div>
+  `, `
+    <button class="btn btn-ghost" onclick="closeModal()" data-i18n="cancel">Cancel</button>
+    <button class="btn btn-primary" onclick="saveProperty()" data-i18n="save">Save</button>
+  `);
+  window.i18n.apply();
+}
+
+async function showEditProperty(id) {
+  const data = await api('/api/properties/' + id);
+  if (!data) return;
+  openModal('Edit Property', `
+    <div class="form-group"><label data-i18n="name">Name</label><input class="input" id="pfName" value="${escapeHtml(data.name)}"></div>
+    <div class="form-group"><label data-i18n="type">Type</label><select class="input" id="pfType"><option value="apartment" ${data.type==='apartment'?'selected':''} data-i18n="apartment">Apartment</option><option value="villa" ${data.type==='villa'?'selected':''} data-i18n="villa">Villa</option><option value="land" ${data.type==='land'?'selected':''} data-i18n="land">Land</option><option value="commercial" ${data.type==='commercial'?'selected':''} data-i18n="commercial">Commercial</option></select></div>
+    <div class="form-group"><label data-i18n="status">Status</label><select class="input" id="pfStatus"><option value="available" ${data.status==='available'?'selected':''} data-i18n="available">Available</option><option value="pending" ${data.status==='pending'?'selected':''} data-i18n="pending">Pending</option><option value="sold" ${data.status==='sold'?'selected':''} data-i18n="sold">Sold</option><option value="rented" ${data.status==='rented'?'selected':''} data-i18n="rented">Rented</option></select></div>
+    <div class="form-group"><label data-i18n="price">Price</label><input class="input" type="number" id="pfPrice" value="${data.price || ''}"></div>
+    <div class="form-group"><label data-i18n="area">Area</label><input class="input" type="number" id="pfArea" value="${data.area || ''}"></div>
+    <div class="form-group"><label data-i18n="bedrooms">Bedrooms</label><input class="input" type="number" id="pfBedrooms" value="${data.bedrooms || ''}"></div>
+    <div class="form-group"><label data-i18n="bathrooms">Bathrooms</label><input class="input" type="number" id="pfBathrooms" value="${data.bathrooms || ''}"></div>
+    <div class="form-group"><label data-i18n="project">Project</label><input class="input" id="pfProject" value="${escapeHtml(data.project || '')}"></div>
+    <div class="form-group"><label data-i18n="developer">Developer</label><input class="input" id="pfDeveloper" value="${escapeHtml(data.developer || '')}"></div>
+    <div class="form-group"><label data-i18n="address">Address</label><input class="input" id="pfAddress" value="${escapeHtml(data.address || '')}"></div>
+    <div class="form-group"><label data-i18n="description">Description</label><textarea class="input" id="pfDescription">${escapeHtml(data.description || '')}</textarea></div>
+    <div class="form-group"><label data-i18n="installment_plan">Installment Plan</label><textarea class="input" id="pfInstallment">${escapeHtml(data.installment_plan || '')}</textarea></div>
+  `, `
+    <button class="btn btn-ghost" onclick="closeModal()" data-i18n="cancel">Cancel</button>
+    <button class="btn btn-primary" onclick="saveProperty(${id})" data-i18n="save">Save</button>
+  `);
+  window.i18n.apply();
+}
+
+async function saveProperty(id) {
+  const body = {
+    name: document.getElementById('pfName').value.trim(),
+    type: document.getElementById('pfType').value,
+    status: document.getElementById('pfStatus').value,
+    price: parseFloat(document.getElementById('pfPrice').value) || null,
+    area: parseFloat(document.getElementById('pfArea').value) || null,
+    bedrooms: parseInt(document.getElementById('pfBedrooms').value) || null,
+    bathrooms: parseInt(document.getElementById('pfBathrooms').value) || null,
+    project: document.getElementById('pfProject').value.trim(),
+    developer: document.getElementById('pfDeveloper').value.trim(),
+    address: document.getElementById('pfAddress').value.trim(),
+    description: document.getElementById('pfDescription').value.trim(),
+    installment_plan: document.getElementById('pfInstallment').value.trim()
+  };
+  if (!body.name) { showToast('Name is required', 'error'); return; }
+
+  const url = id ? '/api/properties/' + id : '/api/properties';
+  const method = id ? 'PUT' : 'POST';
+  const resp = await fetch(url, { method, headers: { 'Authorization': 'Bearer ' + localStorage.getItem('access_token'), 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  if (resp.ok) { closeModal(); showToast(id ? 'Property updated!' : 'Property added!', 'success'); renderProperties(currentPropertyPage, document.getElementById('propertySearch').value); }
+  else { const err = await resp.json().catch(() => ({ detail: 'Error' })); showToast(err.detail || 'Error', 'error'); }
+}
+
+async function deleteProperty(id) {
+  if (!confirm('Are you sure?')) return;
+  const resp = await fetch('/api/properties/' + id, { method: 'DELETE', headers: { 'Authorization': 'Bearer ' + localStorage.getItem('access_token') } });
+  if (resp.ok) { showToast('Property deleted', 'success'); renderProperties(currentPropertyPage, document.getElementById('propertySearch').value); }
+  else showToast('Error deleting property', 'error');
+}
+
+async function openPropertyDesigner(id) {
+  const data = await api('/api/properties/' + id);
+  if (!data) return;
+  const price = data.price ? Number(data.price).toLocaleString() + ' EGP' : '';
+  const details = [data.bedrooms ? data.bedrooms + ' غرف' : '', data.bathrooms ? data.bathrooms + ' حمام' : '', data.area ? data.area + 'م' : ''].filter(Boolean).join(' • ');
+  const lang = localStorage.getItem('lang') || 'ar';
+  window.location.href = '/design?lang=' + lang + '&title=' + encodeURIComponent(data.name || '') + '&price=' + encodeURIComponent(price) + '&details=' + encodeURIComponent(details);
+}
+
+renderProperties();
+</script>
+{% endblock %}

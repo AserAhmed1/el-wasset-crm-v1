@@ -1,0 +1,157 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 data-i18n="tasks">Tasks</h1>
+    <p class="subtitle"><span id="taskCount">0</span> <span data-i18n="tasks">Tasks</span></p>
+  </div>
+  <button class="btn btn-primary" onclick="showAddTask()">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+    <span data-i18n="add_task">Add Task</span>
+  </button>
+</div>
+
+<div class="filter-bar">
+  <select class="input" style="max-width:160px" id="taskStatusFilter" onchange="renderTasks()">
+    <option value="" data-i18n="all">All</option>
+    <option value="pending" data-i18n="pending">Pending</option>
+    <option value="completed" data-i18n="completed">Completed</option>
+  </select>
+  <select class="input" style="max-width:160px" id="taskPriorityFilter" onchange="renderTasks()">
+    <option value="" data-i18n="all">All</option>
+    <option value="low" data-i18n="low">Low</option>
+    <option value="medium" data-i18n="medium">Medium</option>
+    <option value="high" data-i18n="high">High</option>
+    <option value="urgent" data-i18n="urgent">Urgent</option>
+  </select>
+</div>
+
+<div id="tasksList" style="min-height:200px">
+  <div class="loading-spinner" style="margin:40px auto;display:block"></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function renderTasks() {
+  const status = document.getElementById('taskStatusFilter').value;
+  const priority = document.getElementById('taskPriorityFilter').value;
+  const params = new URLSearchParams({ per_page: 100 });
+  if (status) params.set('status', status);
+  if (priority) params.set('priority', priority);
+
+  const data = await api('/api/tasks?' + params.toString());
+  if (!data) return;
+
+  document.getElementById('taskCount').textContent = data.total || 0;
+  const list = document.getElementById('tasksList');
+
+  if (!data.items || !data.items.length) {
+    list.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-icon">✅</div>
+        <p data-i18n="no_tasks">No tasks yet. Add your first task!</p>
+        <button class="btn btn-primary" onclick="showAddTask()" data-i18n="add_task">Add Task</button>
+      </div>
+    `;
+    window.i18n.apply();
+    return;
+  }
+
+  list.innerHTML = `<div style="display:flex;flex-direction:column;gap:8px">${data.items.map(t => `
+    <div style="display:flex;align-items:center;gap:16px;padding:16px 20px;background:var(--card);border:1px solid var(--border);border-radius:var(--radius2);transition:var(--transition);${t.completed ? 'opacity:0.6' : ''}">
+      <button onclick="toggleTask(${t.id}, ${!t.completed})" style="width:22px;height:22px;border-radius:50%;border:2px solid ${t.completed ? 'var(--success)' : 'var(--border2)'};background:${t.completed ? 'var(--success)' : 'transparent'};cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:var(--transition)">
+        ${t.completed ? '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>' : ''}
+      </button>
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <span style="font-weight:600;font-size:15px;color:var(--text);${t.completed ? 'text-decoration:line-through' : ''}">${escapeHtml(t.title)}</span>
+          ${t.priority ? `<span class="badge ${t.priority === 'urgent' ? 'badge-danger' : t.priority === 'high' ? 'badge-warning' : t.priority === 'medium' ? 'badge-primary' : 'badge-ghost'}">${window.i18n.t(t.priority)}</span>` : ''}
+          ${t.type ? `<span class="badge badge-ghost">${window.i18n.t(t.type)}</span>` : ''}
+        </div>
+        ${t.due_date ? `<p style="font-size:12px;color:var(--text3);margin-top:4px">📅 ${fmtDate(t.due_date)}</p>` : ''}
+        ${t.notes ? `<p style="font-size:13px;color:var(--text2);margin-top:4px">${escapeHtml(t.notes)}</p>` : ''}
+      </div>
+      <div style="display:flex;gap:4px;flex-shrink:0">
+        <button class="btn btn-sm btn-ghost" onclick="showEditTask(${t.id})" data-i18n="edit">Edit</button>
+        <button class="btn btn-sm btn-danger" onclick="deleteTask(${t.id})" data-i18n="delete">Delete</button>
+      </div>
+    </div>
+  `).join('')}</div>`;
+
+  window.i18n.apply();
+}
+
+async function toggleTask(id, completed) {
+  const resp = await fetch('/api/tasks/' + id, {
+    method: 'PUT',
+    headers: { 'Authorization': 'Bearer ' + localStorage.getItem('access_token'), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ completed })
+  });
+  if (resp.ok) { renderTasks(); }
+  else showToast('Error updating task', 'error');
+}
+
+function showAddTask() {
+  openModal('Add Task', `
+    <div class="form-group"><label data-i18n="name">Title</label><input class="input" id="tfTitle"></div>
+    <div class="form-group"><label data-i18n="type">Type</label><select class="input" id="tfType"><option value="follow_up" data-i18n="follow_up">Follow-up</option><option value="call" data-i18n="call">Call</option><option value="meeting" data-i18n="meeting">Meeting</option><option value="showing" data-i18n="showing">Showing</option><option value="reminder" data-i18n="reminder">Reminder</option></select></div>
+    <div class="form-group"><label data-i18n="priority">Priority</label><select class="input" id="tfPriority"><option value="low" data-i18n="low">Low</option><option value="medium" selected data-i18n="medium">Medium</option><option value="high" data-i18n="high">High</option><option value="urgent" data-i18n="urgent">Urgent</option></select></div>
+    <div class="form-group"><label data-i18n="due_date">Due Date</label><input class="input" type="date" id="tfDueDate"></div>
+    <div class="form-group"><label data-i18n="notes">Notes</label><textarea class="input" id="tfNotes"></textarea></div>
+    <div class="form-group"><label data-i18n="conditional_reminder">Conditional Reminder</label><select class="input" id="tfConditional"><option value="">None</option><option value="if_no_reply" data-i18n="if_no_reply">If no reply</option></select></div>
+    <div class="form-group"><label data-i18n="if_after_days">After X days</label><input class="input" type="number" id="tfConditionalDays" value="3"></div>
+  `, `
+    <button class="btn btn-ghost" onclick="closeModal()" data-i18n="cancel">Cancel</button>
+    <button class="btn btn-primary" onclick="saveTask()" data-i18n="save">Save</button>
+  `);
+  window.i18n.apply();
+}
+
+async function showEditTask(id) {
+  const data = await api('/api/tasks/' + id);
+  if (!data) return;
+  openModal('Edit Task', `
+    <div class="form-group"><label data-i18n="name">Title</label><input class="input" id="tfTitle" value="${escapeHtml(data.title)}"></div>
+    <div class="form-group"><label data-i18n="type">Type</label><select class="input" id="tfType"><option value="follow_up" ${data.type==='follow_up'?'selected':''} data-i18n="follow_up">Follow-up</option><option value="call" ${data.type==='call'?'selected':''} data-i18n="call">Call</option><option value="meeting" ${data.type==='meeting'?'selected':''} data-i18n="meeting">Meeting</option><option value="showing" ${data.type==='showing'?'selected':''} data-i18n="showing">Showing</option><option value="reminder" ${data.type==='reminder'?'selected':''} data-i18n="reminder">Reminder</option></select></div>
+    <div class="form-group"><label data-i18n="priority">Priority</label><select class="input" id="tfPriority"><option value="low" ${data.priority==='low'?'selected':''} data-i18n="low">Low</option><option value="medium" ${data.priority==='medium'?'selected':''} data-i18n="medium">Medium</option><option value="high" ${data.priority==='high'?'selected':''} data-i18n="high">High</option><option value="urgent" ${data.priority==='urgent'?'selected':''} data-i18n="urgent">Urgent</option></select></div>
+    <div class="form-group"><label data-i18n="due_date">Due Date</label><input class="input" type="date" id="tfDueDate" value="${data.due_date || ''}"></div>
+    <div class="form-group"><label data-i18n="notes">Notes</label><textarea class="input" id="tfNotes">${escapeHtml(data.notes || '')}</textarea></div>
+    <div class="form-group"><label data-i18n="conditional_reminder">Conditional Reminder</label><select class="input" id="tfConditional"><option value="">None</option><option value="if_no_reply" ${data.conditional_type==='if_no_reply'?'selected':''} data-i18n="if_no_reply">If no reply</option></select></div>
+    <div class="form-group"><label data-i18n="if_after_days">After X days</label><input class="input" type="number" id="tfConditionalDays" value="${data.conditional_days || 3}"></div>
+  `, `
+    <button class="btn btn-ghost" onclick="closeModal()" data-i18n="cancel">Cancel</button>
+    <button class="btn btn-primary" onclick="saveTask(${id})" data-i18n="save">Save</button>
+  `);
+  window.i18n.apply();
+}
+
+async function saveTask(id) {
+  const body = {
+    title: document.getElementById('tfTitle').value.trim(),
+    type: document.getElementById('tfType').value,
+    priority: document.getElementById('tfPriority').value,
+    due_date: document.getElementById('tfDueDate').value || null,
+    notes: document.getElementById('tfNotes').value.trim(),
+    conditional_type: document.getElementById('tfConditional').value || null,
+    conditional_days: parseInt(document.getElementById('tfConditionalDays').value) || null
+  };
+  if (!body.title) { showToast('Title is required', 'error'); return; }
+
+  const url = id ? '/api/tasks/' + id : '/api/tasks';
+  const method = id ? 'PUT' : 'POST';
+  const resp = await fetch(url, { method, headers: { 'Authorization': 'Bearer ' + localStorage.getItem('access_token'), 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  if (resp.ok) { closeModal(); showToast(id ? 'Task updated!' : 'Task added!', 'success'); renderTasks(); }
+  else { const err = await resp.json().catch(() => ({ detail: 'Error' })); showToast(err.detail || 'Error', 'error'); }
+}
+
+async function deleteTask(id) {
+  if (!confirm('Are you sure?')) return;
+  const resp = await fetch('/api/tasks/' + id, { method: 'DELETE', headers: { 'Authorization': 'Bearer ' + localStorage.getItem('access_token') } });
+  if (resp.ok) { showToast('Task deleted', 'success'); renderTasks(); }
+  else showToast('Error deleting task', 'error');
+}
+
+renderTasks();
+</script>
+{% endblock %}

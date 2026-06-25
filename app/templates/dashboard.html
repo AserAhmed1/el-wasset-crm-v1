@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 data-i18n="dashboard">Dashboard</h1>
+    <p class="subtitle" id="welcomeMsg" data-i18n="welcome">Welcome</p>
+  </div>
+</div>
+
+<div class="grid grid-4 stagger" id="statsGrid">
+  <div class="stat-card animate-in">
+    <div class="stat-icon" style="background:var(--primary3);color:var(--primary2)">👥</div>
+    <div class="stat-value" id="statContacts">0</div>
+    <div class="stat-label" data-i18n="total_contacts">Contacts</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-icon" style="background:rgba(0,206,201,0.15);color:var(--accent)">🏠</div>
+    <div class="stat-value" id="statProperties">0</div>
+    <div class="stat-label" data-i18n="total_properties">Properties</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-icon" style="background:rgba(253,203,110,0.15);color:var(--warning)">💼</div>
+    <div class="stat-value" id="statDeals">0</div>
+    <div class="stat-label" data-i18n="active_deals">Active Deals</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-icon" style="background:rgba(0,184,148,0.15);color:var(--success)">✅</div>
+    <div class="stat-value" id="statTasks">0</div>
+    <div class="stat-label" data-i18n="tasks_today">Today's Tasks</div>
+  </div>
+</div>
+
+<div class="grid grid-2" style="margin-top:24px">
+  <!-- Pipeline summary -->
+  <div class="card">
+    <h3 style="margin-bottom:16px;font-size:16px" data-i18n="pipeline">Pipeline</h3>
+    <div id="pipelineSummary" style="display:flex;flex-direction:column;gap:8px">
+      <div class="loading-spinner" style="margin:20px auto"></div>
+    </div>
+  </div>
+  <!-- Recent activity -->
+  <div class="card">
+    <h3 style="margin-bottom:16px;font-size:16px" data-i18n="recent_activity">Recent Activity</h3>
+    <div id="recentActivity">
+      <div class="loading-spinner" style="margin:20px auto"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Deals chart -->
+<div class="card" style="margin-top:24px">
+  <h3 style="margin-bottom:16px;font-size:16px" data-i18n="deals">Deals Overview</h3>
+  <div id="dealsChart" style="height:200px;display:flex;align-items:flex-end;gap:8px;padding-top:20px"></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function loadDashboard() {
+  const data = await api('/api/reports/dashboard');
+  if (!data) return;
+
+  document.getElementById('statContacts').textContent = data.total_contacts || 0;
+  document.getElementById('statProperties').textContent = data.total_properties || 0;
+  document.getElementById('statDeals').textContent = data.active_deals || 0;
+  document.getElementById('statTasks').textContent = data.tasks_today || 0;
+
+  // Pipeline summary
+  if (data.pipeline && data.pipeline.length) {
+    const total = data.pipeline.reduce((s, x) => s + x.count, 0);
+    document.getElementById('pipelineSummary').innerHTML = data.pipeline.map(s => `
+      <div style="display:flex;align-items:center;gap:12px">
+        <span style="flex:1;font-size:13px;color:var(--text2)">${window.i18n.t(s.stage)}</span>
+        <div style="flex:2;height:8px;background:var(--bg2);border-radius:4px;overflow:hidden">
+          <div style="height:100%;width:${total ? (s.count/total*100) : 0}%;background:var(--primary);border-radius:4px;transition:width 0.5s ease"></div>
+        </div>
+        <span style="font-size:13px;font-weight:600;min-width:24px;text-align:right">${s.count}</span>
+      </div>
+    `).join('');
+  } else {
+    document.getElementById('pipelineSummary').innerHTML = '<p style="color:var(--text3);font-size:14px" data-i18n="no_data">No data</p>';
+    window.i18n.apply();
+  }
+
+  // Recent activity
+  const activity = document.getElementById('recentActivity');
+  if (data.recent_activity && data.recent_activity.length) {
+    activity.innerHTML = data.recent_activity.slice(0, 10).map(a => `
+      <div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border);font-size:13px">
+        <span style="color:var(--text2)">${escapeHtml(a.action)}</span>
+        <span style="color:var(--text3);margin-left:auto;font-size:12px">${fmtDate(a.created_at)}</span>
+      </div>
+    `).join('');
+  } else {
+    activity.innerHTML = '<p style="color:var(--text3);font-size:14px" data-i18n="no_activity">No activity yet</p>';
+    window.i18n.apply();
+  }
+
+  // Deals chart - bar chart by stage
+  if (data.pipeline && data.pipeline.length) {
+    const maxCount = Math.max(...data.pipeline.map(s => s.count), 1);
+    const chart = document.getElementById('dealsChart');
+    chart.innerHTML = data.pipeline.map(s => {
+      const h = (s.count / maxCount) * 180;
+      return `
+        <div style="flex:1;display:flex;flex-direction:column;align-items:center;height:100%;justify-content:flex-end">
+          <span style="font-size:12px;font-weight:600;margin-bottom:4px">${s.count}</span>
+          <div style="width:100%;max-width:40px;height:${h}px;background:linear-gradient(180deg,var(--primary),var(--accent));border-radius:6px 6px 0 0;transition:height 0.5s ease;min-height:4px"></div>
+          <span style="font-size:10px;color:var(--text3);margin-top:6px;text-align:center;white-space:nowrap">${window.i18n.t(s.stage)}</span>
+        </div>
+      `;
+    }).join('');
+  }
+}
+
+loadDashboard();
+</script>
+{% endblock %}

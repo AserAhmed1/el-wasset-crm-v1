@@ -1,0 +1,237 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 data-i18n="chat">AI Assistant</h1>
+    <p class="subtitle" data-i18n="ai_assistant_subtitle">Ask me anything about your business</p>
+  </div>
+</div>
+
+<div class="chat-container">
+  <div class="chat-messages" id="chatMessages">
+    <div class="chat-msg bot">
+      <div data-i18n="ai_welcome">Hello! I'm your AI assistant. I can help you create Excel reports, run reports, set reminders, search properties, calculate commissions, and more. How can I help?</div>
+    </div>
+  </div>
+  <div class="chat-input-wrap">
+    <button class="btn btn-sm btn-ghost" id="voiceBtn" onclick="toggleVoice()" title="Voice note" style="flex-shrink:0">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+    </button>
+    <input class="input" type="text" id="chatInput" data-i18n-placeholder="chat_placeholder" placeholder="Type your message..." onkeydown="if(event.key==='Enter')sendMessage()">
+    <label class="btn btn-sm btn-ghost" title="Attach image" style="flex-shrink:0;cursor:pointer">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+      <input type="file" id="imageInput" accept="image/*" style="display:none" onchange="sendImage(this.files[0])">
+    </label>
+    <button class="btn btn-primary" onclick="sendMessage()" style="flex-shrink:0">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+    </button>
+  </div>
+</div>
+
+<!-- Voice recording indicator -->
+<div id="voiceIndicator" style="display:none;position:fixed;bottom:100px;left:50%;transform:translateX(-50%);background:var(--danger);color:#fff;padding:12px 24px;border-radius:var(--radius3);z-index:999;animation:pulse 1s infinite;font-size:14px;font-weight:600">
+  🔴 Recording... <span id="voiceTimer">0s</span>
+</div>
+
+<!-- Quick calculator floating button -->
+<button onclick="openCalculator()" style="position:fixed;bottom:84px;right:16px;width:56px;height:56px;border-radius:50%;background:linear-gradient(135deg,var(--primary),var(--accent));border:none;color:#fff;font-size:24px;cursor:pointer;box-shadow:0 4px 20px rgba(108,92,231,0.4);z-index:50;display:flex;align-items:center;justify-content:center">
+  💰
+</button>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Voice recording
+let mediaRecorder = null;
+let audioChunks = [];
+let voiceTimer = null;
+let voiceSeconds = 0;
+
+async function toggleVoice() {
+  const btn = document.getElementById('voiceBtn');
+  const indicator = document.getElementById('voiceIndicator');
+
+  if (mediaRecorder && mediaRecorder.state === 'recording') {
+    mediaRecorder.stop();
+    clearInterval(voiceTimer);
+    indicator.style.display = 'none';
+    btn.style.color = '';
+    return;
+  }
+
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    mediaRecorder = new MediaRecorder(stream);
+    audioChunks = [];
+
+    mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
+    mediaRecorder.onstop = async () => {
+      const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+      stream.getTracks().forEach(t => t.stop());
+      if (audioBlob.size < 1000) return;
+      const text = await sendVoiceToText(audioBlob);
+      if (text) {
+        document.getElementById('chatInput').value = text;
+        sendMessage();
+      }
+    };
+
+    mediaRecorder.start();
+    indicator.style.display = 'block';
+    btn.style.color = 'var(--danger)';
+    voiceSeconds = 0;
+    voiceTimer = setInterval(() => {
+      voiceSeconds++;
+      document.getElementById('voiceTimer').textContent = voiceSeconds + 's';
+      if (voiceSeconds >= 30) toggleVoice();
+    }, 1000);
+  } catch (e) {
+    showToast('Microphone access denied', 'error');
+  }
+}
+
+function sendVoiceToText(blob) {
+  // For now, return the blob info as text for Gemini to process
+  // In production, integrate with Gemini audio API or speech-to-text
+  return new Promise((resolve) => {
+    // Placeholder: in real app, send to /api/chat/voice endpoint
+    resolve("[Voice note recorded - " + Math.round(blob.size / 1024) + "KB]");
+  });
+}
+
+// Image upload
+function sendImage(file) {
+  if (!file) return;
+  if (file.size > 10 * 1024 * 1024) { showToast('Image too large (max 10MB)', 'error'); return; }
+
+  const reader = new FileReader();
+  reader.onload = async (e) => {
+    const imgData = e.target.result; // base64
+    const container = document.getElementById('chatMessages');
+    container.innerHTML += `<div class="chat-msg user animate-in"><img src="${imgData}" style="max-width:200px;border-radius:8px"><br><small style="font-size:11px">${escapeHtml(file.name)}</small></div>`;
+    container.scrollTop = container.scrollHeight;
+
+    const loadingId = 'loading-' + Date.now();
+    container.innerHTML += `<div class="chat-msg bot" id="${loadingId}"><span class="loading-spinner"></span> Analyzing image...</div>`;
+    container.scrollTop = container.scrollHeight;
+
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('prompt', 'Analyze this image. If it is a property, contract, document, or anything related to real estate, describe it. Otherwise just describe what you see.');
+
+      const token = localStorage.getItem('access_token');
+      const resp = await fetch('/api/chat/analyze-image', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + token },
+        body: formData
+      });
+      const data = await resp.json();
+      document.getElementById(loadingId).remove();
+      container.innerHTML += `<div class="chat-msg bot animate-in">${escapeHtml(data.response || 'Could not analyze image.')}</div>`;
+    } catch(e) {
+      document.getElementById(loadingId).remove();
+      container.innerHTML += `<div class="chat-msg bot animate-in">Connection error.</div>`;
+    }
+    container.scrollTop = container.scrollHeight;
+  };
+  reader.readAsDataURL(file);
+}
+
+// Chat message
+async function sendMessage() {
+  const input = document.getElementById('chatInput');
+  const msg = input.value.trim();
+  if (!msg) return;
+
+  input.value = '';
+  const container = document.getElementById('chatMessages');
+  container.innerHTML += `<div class="chat-msg user animate-in">${escapeHtml(msg)}</div>`;
+  container.scrollTop = container.scrollHeight;
+
+  const loadingId = 'loading-' + Date.now();
+  container.innerHTML += `<div class="chat-msg bot" id="${loadingId}"><span class="loading-spinner"></span></div>`;
+  container.scrollTop = container.scrollHeight;
+
+  try {
+    const data = await api('/api/chat', {
+      method: 'POST',
+      body: JSON.stringify({ message: msg })
+    });
+    document.getElementById(loadingId).remove();
+    container.innerHTML += `<div class="chat-msg bot animate-in">${escapeHtml(data?.response || 'Sorry, I couldn\'t process that.')}</div>`;
+  } catch (e) {
+    document.getElementById(loadingId).remove();
+    container.innerHTML += `<div class="chat-msg bot animate-in">Connection error. Please try again.</div>`;
+  }
+  container.scrollTop = container.scrollHeight;
+}
+
+// Quick calculator for on-site negotiations
+function openCalculator() {
+  openModal('💰 Quick Calculator', `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div class="form-group">
+        <label>Price (EGP)</label>
+        <input class="input" type="number" id="calcPrice" placeholder="e.g. 5000000" oninput="calcAll()">
+      </div>
+      <div class="form-group">
+        <label>Area (m²)</label>
+        <input class="input" type="number" id="calcArea" placeholder="e.g. 200" oninput="calcAll()">
+      </div>
+      <div class="form-group">
+        <label>Commission %</label>
+        <input class="input" type="number" id="calcCommPct" value="2.5" step="0.1" oninput="calcAll()">
+      </div>
+      <div class="form-group">
+        <label>USD/EGP Rate</label>
+        <input class="input" type="number" id="calcUsdRate" value="48.5" step="0.1" oninput="calcAll()">
+      </div>
+    </div>
+    <div id="calcResults" style="background:var(--bg2);padding:16px;border-radius:var(--radius2);margin-top:12px">
+      <p style="font-size:13px;color:var(--text3)">Enter values to calculate</p>
+    </div>
+  `, `<button class="btn btn-ghost" onclick="closeModal()">Close</button>`);
+}
+
+function calcAll() {
+  const price = parseFloat(document.getElementById('calcPrice').value) || 0;
+  const area = parseFloat(document.getElementById('calcArea').value) || 0;
+  const commPct = parseFloat(document.getElementById('calcCommPct').value) || 0;
+  const usdRate = parseFloat(document.getElementById('calcUsdRate').value) || 48.5;
+
+  const commission = price * (commPct / 100);
+  const pricePerMeter = area > 0 ? price / area : 0;
+  const priceUsd = usdRate > 0 ? price / usdRate : 0;
+
+  document.getElementById('calcResults').innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div style="padding:12px;background:var(--card);border-radius:var(--radius3);text-align:center">
+        <p style="font-size:11px;color:var(--text3)">Commission</p>
+        <p style="font-size:18px;font-weight:700;color:var(--success)">${fmtMoney(commission)} EGP</p>
+      </div>
+      <div style="padding:12px;background:var(--card);border-radius:var(--radius3);text-align:center">
+        <p style="font-size:11px;color:var(--text3)">Price/m²</p>
+        <p style="font-size:18px;font-weight:700;color:var(--primary2)">${fmtMoney(pricePerMeter)} EGP</p>
+      </div>
+      <div style="padding:12px;background:var(--card);border-radius:var(--radius3);text-align:center">
+        <p style="font-size:11px;color:var(--text3)">USD Value</p>
+        <p style="font-size:18px;font-weight:700;color:var(--warning)">$${fmtMoney(priceUsd)}</p>
+      </div>
+      <div style="padding:12px;background:var(--card);border-radius:var(--radius3);text-align:center">
+        <p style="font-size:11px;color:var(--text3)">Net Price</p>
+        <p style="font-size:18px;font-weight:700;color:var(--text)">${fmtMoney(price)} EGP</p>
+      </div>
+    </div>
+    <button class="btn btn-sm btn-primary" style="width:100%;margin-top:12px" onclick="copyCalcResults()">📋 Copy Results</button>
+  `;
+}
+
+function copyCalcResults() {
+  const price = document.getElementById('calcPrice').value || '0';
+  const comm = parseFloat(price) * (parseFloat(document.getElementById('calcCommPct').value || '0') / 100);
+  const text = `Price: ${fmtMoney(price)} EGP\nCommission: ${fmtMoney(comm)} EGP\n---\nEL-Wasset CRM Calculator`;
+  navigator.clipboard.writeText(text).then(() => showToast('Copied!', 'success')).catch(() => {});
+}
+</script>
+{% endblock %}

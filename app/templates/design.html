@@ -1,0 +1,312 @@
+{% extends "base.html" %}
+{% block content %}
+<style>
+.design-layout{display:flex;gap:20px;height:calc(100vh - var(--header-height) - 100px)}
+.design-sidebar{width:280px;flex-shrink:0;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:16px;overflow-y:auto;display:flex;flex-direction:column;gap:16px}
+.design-canvas-wrap{flex:1;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);display:flex;align-items:center;justify-content:center;overflow:hidden;position:relative}
+.design-canvas-wrap canvas{max-width:100%;max-height:100%;border-radius:var(--radius3);box-shadow:var(--shadow)}
+.tpl-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.tpl-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius2);padding:12px;cursor:pointer;text-align:center;transition:var(--transition);font-size:12px;color:var(--text2)}
+.tpl-card:hover{border-color:var(--primary);color:var(--text)}
+.tpl-card.active{border-color:var(--primary);background:var(--primary3);color:var(--primary2)}
+.tpl-card svg{width:32px;height:32px;margin-bottom:6px;color:var(--text3)}
+.tool-group{display:flex;flex-direction:column;gap:8px}
+.tool-group label{font-size:12px;color:var(--text2);font-weight:600}
+.tool-group .input{font-size:13px;padding:10px 12px}
+.color-row{display:flex;gap:6px;flex-wrap:wrap}
+.color-swatch{width:28px;height:28px;border-radius:50%;border:2px solid transparent;cursor:pointer;transition:var(--transition)}
+.color-swatch:hover,.color-swatch.active{border-color:var(--text)}
+.design-actions{display:flex;gap:8px;margin-top:auto}
+.design-actions .btn{flex:1}
+@media(max-width:768px){.design-layout{flex-direction:column;height:auto}.design-sidebar{width:100%;max-height:300px}.design-canvas-wrap{min-height:400px}}
+</style>
+
+<div class="page-header">
+  <h1 data-i18n="design_studio">Design Studio</h1>
+  <div style="display:flex;gap:8px">
+    <button class="btn btn-ghost btn-sm" onclick="exportPNG()" data-i18n="download">Download PNG</button>
+  </div>
+</div>
+
+<div class="design-layout">
+  <!-- Left: Design Tools -->
+  <div class="design-sidebar">
+    <div>
+      <label style="font-size:12px;color:var(--text2);font-weight:600;margin-bottom:8px;display:block" data-i18n="template">Template</label>
+      <div class="tpl-grid" id="templateGrid">
+        <div class="tpl-card active" data-tpl="property-card">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+          <span data-i18n="property_card">Property Card</span>
+        </div>
+        <div class="tpl-card" data-tpl="social-post">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="20" rx="5"/><line x1="2" y1="10" x2="22" y2="10"/><line x1="10" y1="2" x2="10" y2="22"/></svg>
+          <span data-i18n="social_post">Social Post</span>
+        </div>
+        <div class="tpl-card" data-tpl="whatsapp">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          <span data-i18n="whatsapp_story">WhatsApp Story</span>
+        </div>
+        <div class="tpl-card" data-tpl="brochure">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+          <span data-i18n="brochure">Brochure</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="tool-group">
+      <label data-i18n="property_title">Title</label>
+      <input class="input" id="designTitle" value="شقة للبيع ممتازة" oninput="renderDesign()">
+    </div>
+    <div class="tool-group">
+      <label data-i18n="price">Price</label>
+      <input class="input" id="designPrice" value="1,250,000 EGP" oninput="renderDesign()">
+    </div>
+    <div class="tool-group">
+      <label data-i18n="details">Details</label>
+      <input class="input" id="designDetails" value="3 غرف • 2 حمام • 150م" oninput="renderDesign()">
+    </div>
+    <div class="tool-group">
+      <label data-i18n="agent_name">Agent Name</label>
+      <input class="input" id="designAgent" value="أحمد علي" oninput="renderDesign()">
+    </div>
+    <div class="tool-group">
+      <label data-i18n="phone">Phone</label>
+      <input class="input" id="designPhone" value="01037076001" oninput="renderDesign()">
+    </div>
+    <div class="tool-group">
+      <label data-i18n="background_color">Background</label>
+      <div class="color-row" id="bgColors">
+        <div class="color-swatch active" style="background:#0a0a1a" data-color="#0a0a1a"></div>
+        <div class="color-swatch" style="background:#1a1a3a" data-color="#1a1a3a"></div>
+        <div class="color-swatch" style="background:#6c5ce7" data-color="#6c5ce7"></div>
+        <div class="color-swatch" style="background:#00cec9" data-color="#00cec9"></div>
+        <div class="color-swatch" style="background:#ff6b6b" data-color="#ff6b6b"></div>
+        <div class="color-swatch" style="background:#fdcb6e" data-color="#fdcb6e"></div>
+        <div class="color-swatch" style="background:#ffffff;border:1px solid var(--border)" data-color="#ffffff"></div>
+      </div>
+    </div>
+    <div class="tool-group">
+      <label data-i18n="upload_image">Upload Image</label>
+      <input type="file" class="input" id="designImage" accept="image/*" onchange="handleImageUpload(event)" style="padding:8px;font-size:13px">
+    </div>
+
+    <div class="design-actions">
+      <button class="btn btn-primary" onclick="exportPNG()" data-i18n="download_image">Download Image</button>
+    </div>
+  </div>
+
+  <!-- Right: Canvas -->
+  <div class="design-canvas-wrap" id="canvasWrap">
+    <canvas id="designCanvas" width="600" height="800"></canvas>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let uploadedImage = null;
+let bgColor = '#0a0a1a';
+const templates = {};
+
+// Color picker
+document.querySelectorAll('.color-swatch').forEach(el => {
+  el.addEventListener('click', () => {
+    document.querySelectorAll('.color-swatch').forEach(s => s.classList.remove('active'));
+    el.classList.add('active');
+    bgColor = el.dataset.color;
+    renderDesign();
+  });
+});
+
+// Template picker
+document.querySelectorAll('.tpl-card').forEach(el => {
+  el.addEventListener('click', () => {
+    document.querySelectorAll('.tpl-card').forEach(s => s.classList.remove('active'));
+    el.classList.add('active');
+    renderDesign();
+  });
+});
+
+function handleImageUpload(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(ev) {
+    const img = new Image();
+    img.onload = function() { uploadedImage = img; renderDesign(); };
+    img.src = ev.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+function renderDesign() {
+  const canvas = document.getElementById('designCanvas');
+  const ctx = canvas.getContext('2d');
+  const template = document.querySelector('.tpl-card.active')?.dataset.tpl || 'property-card';
+  const W = canvas.width, H = canvas.height;
+
+  ctx.clearRect(0, 0, W, H);
+
+  // Draw background
+  ctx.fillStyle = bgColor;
+  ctx.fillRect(0, 0, W, H);
+
+  // Draw image if uploaded
+  if (uploadedImage) {
+    const imgAspect = uploadedImage.width / uploadedImage.height;
+    let iw, ih, ix, iy;
+    if (template === 'social-post') {
+      iw = W; ih = W / imgAspect; ix = 0; iy = 0;
+    } else if (template === 'whatsapp') {
+      iw = W * 0.9; ih = iw / imgAspect; ix = W * 0.05; iy = 20;
+    } else {
+      iw = W; ih = H * 0.45; ix = 0; iy = 0;
+    }
+    ctx.save();
+    ctx.beginPath();
+    if (template === 'whatsapp') {
+      ctx.roundRect(ix, iy, iw, ih, 16);
+    } else {
+      ctx.rect(ix, iy, iw, ih);
+    }
+    ctx.clip();
+    ctx.drawImage(uploadedImage, ix, iy, iw, ih);
+    ctx.restore();
+  }
+
+  const isRTL = (localStorage.getItem('lang') || 'ar') === 'ar';
+  const title = document.getElementById('designTitle').value || 'Property';
+  const price = document.getElementById('designPrice').value || '';
+  const details = document.getElementById('designDetails').value || '';
+  const agent = document.getElementById('designAgent').value || '';
+  const phone = document.getElementById('designPhone').value || '';
+
+  // Draw overlay gradient at bottom for text readability
+  const grad = ctx.createLinearGradient(0, H * 0.5, 0, H);
+  grad.addColorStop(0, 'rgba(0,0,0,0)');
+  grad.addColorStop(1, 'rgba(0,0,0,0.85)');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, H * 0.5, W, H * 0.5);
+
+  // Text styles
+  const textX = isRTL ? W - 30 : 30;
+  const textAlign = isRTL ? 'right' : 'left';
+
+  // Title
+  ctx.textAlign = textAlign;
+  ctx.textBaseline = 'top';
+  ctx.fillStyle = '#ffffff';
+
+  let yOffset = H * 0.52;
+  ctx.font = 'bold 28px Cairo, Inter, sans-serif';
+  wrapText(ctx, title, textX, yOffset, W - 80, 36);
+  yOffset += measureTextHeight(ctx, title, W - 80) + 12;
+
+  // Price (highlighted)
+  ctx.font = 'bold 36px Cairo, Inter, sans-serif';
+  ctx.fillStyle = '#00cec9';
+  ctx.textAlign = textAlign;
+  ctx.fillText(price, textX, yOffset);
+  yOffset += 44;
+
+  // Details
+  ctx.font = '16px Cairo, Inter, sans-serif';
+  ctx.fillStyle = 'rgba(255,255,255,0.8)';
+  ctx.textAlign = textAlign;
+  ctx.fillText(details, textX, yOffset);
+  yOffset += 30;
+
+  // Agent + phone line
+  ctx.font = '15px Cairo, Inter, sans-serif';
+  ctx.fillStyle = 'rgba(255,255,255,0.6)';
+  const agentLine = agent + (phone ? '  •  ' + phone : '');
+  ctx.fillText(agentLine, textX, yOffset);
+
+  // Logo watermark
+  ctx.textAlign = isRTL ? 'left' : 'right';
+  ctx.font = '12px Cairo, Inter, sans-serif';
+  ctx.fillStyle = 'rgba(255,255,255,0.15)';
+  ctx.fillText('EL-Wasset CRM', isRTL ? 20 : W - 20, H - 20);
+
+  // Border accent
+  ctx.strokeStyle = '#6c5ce7';
+  ctx.lineWidth = 4;
+  ctx.strokeRect(10, 10, W - 20, H - 20);
+}
+
+function wrapText(ctx, text, x, y, maxWidth, lineHeight) {
+  if (!text) return;
+  const chars = text.split('');
+  let line = '';
+  for (let i = 0; i < chars.length; i++) {
+    const testLine = line + chars[i];
+    const metrics = ctx.measureText(testLine);
+    if (metrics.width > maxWidth && line !== '') {
+      ctx.fillText(line, x, y);
+      line = chars[i];
+      y += lineHeight;
+    } else {
+      line = testLine;
+    }
+  }
+  ctx.fillText(line, x, y);
+}
+
+function measureTextHeight(ctx, text, maxWidth) {
+  if (!text) return 0;
+  let lines = 1;
+  let line = '';
+  for (let i = 0; i < text.length; i++) {
+    const testLine = line + text[i];
+    if (ctx.measureText(testLine).width > maxWidth && line !== '') {
+      lines++;
+      line = text[i];
+    } else {
+      line = testLine;
+    }
+  }
+  return lines * 36;
+}
+
+function exportPNG() {
+  const canvas = document.getElementById('designCanvas');
+  const link = document.createElement('a');
+  link.download = 'property-design.png';
+  link.href = canvas.toDataURL('image/png');
+  link.click();
+  showToast('Image downloaded!', 'success');
+}
+
+// Auto-resize canvas to fit container
+function fitCanvas() {
+  const wrap = document.getElementById('canvasWrap');
+  const canvas = document.getElementById('designCanvas');
+  const maxW = wrap.clientWidth - 32;
+  const maxH = wrap.clientHeight - 32;
+  const aspect = canvas.width / canvas.height;
+  let w = maxW, h = w / aspect;
+  if (h > maxH) { h = maxH; w = h * aspect; }
+  canvas.style.width = w + 'px';
+  canvas.style.height = h + 'px';
+}
+
+window.addEventListener('resize', fitCanvas);
+document.addEventListener('DOMContentLoaded', () => {
+  setTimeout(fitCanvas, 100);
+  renderDesign();
+});
+
+// Pre-fill from URL params (opened from property page)
+const urlParams = new URLSearchParams(window.location.search);
+if (urlParams.get('title')) { document.getElementById('designTitle').value = urlParams.get('title'); }
+if (urlParams.get('price')) { document.getElementById('designPrice').value = urlParams.get('price'); }
+if (urlParams.get('details')) { document.getElementById('designDetails').value = urlParams.get('details'); }
+
+// Re-render on lang change
+const origSetLang = window.i18n.setLang;
+window.i18n.setLang = async function(lang) {
+  await origSetLang.call(window.i18n, lang);
+  setTimeout(renderDesign, 200);
+};
+</script>
+{% endblock %}
