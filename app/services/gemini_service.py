@@ -99,7 +99,8 @@ class GeminiService:
         try:
             import base64
             img_b64 = base64.b64encode(image_bytes).decode()
-            model = await self._get_model()
+            # Use image-capable model: fall back to 2.0-flash which definitely supports vision
+            model = "gemini-2.0-flash"
             response = await client.aio.models.generate_content(
                 model=model,
                 contents=[
