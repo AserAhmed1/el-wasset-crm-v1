@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -90,22 +90,30 @@ class ImageAnalysisRequest(BaseModel):
 
 @router.post("/chat/analyze-image")
 async def analyze_image_endpoint(
-    file: bytes = __import__("fastapi").File(...),
-    prompt: str = __import__("fastapi").Form("Describe this image"),
+    file: UploadFile = File(...),
+    prompt: str = Form("Describe this image"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    if not file or len(file) == 0:
+    if not file or not file.file:
         raise HTTPException(status_code=400, detail="No image provided")
-    if len(file) > 10 * 1024 * 1024:
+    contents = await file.read()
+    if len(contents) > 10 * 1024 * 1024:
         raise HTTPException(status_code=400, detail="Image too large (max 10MB)")
 
-    import imghdr
-    mime_map = {"jpeg": "image/jpeg", "png": "image/png", "gif": "image/gif", "webp": "image/webp"}
-    img_type = imghdr.what(None, h=file[:32]) or "png"
-    mime_type = mime_map.get(img_type, "image/png")
+    ext = (file.filename or "").lower()
+    if ext.endswith((".jpg", ".jpeg")):
+        mime_type = "image/jpeg"
+    elif ext.endswith(".png"):
+        mime_type = "image/png"
+    elif ext.endswith(".gif"):
+        mime_type = "image/gif"
+    elif ext.endswith(".webp"):
+        mime_type = "image/webp"
+    else:
+        mime_type = "image/png"
 
-    ai_response = await gemini_service.analyze_image(file, mime_type, prompt)
+    ai_response = await gemini_service.analyze_image(contents, mime_type, prompt)
 
     user_msg = ChatMessage(
         brokerage_id=current_user.brokerage_id,
